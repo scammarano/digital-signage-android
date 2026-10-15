@@ -16,6 +16,13 @@ class SettingsStore(private val context: Context) {
         get() = p.getString("portal", DEFAULT_PORTAL) ?: DEFAULT_PORTAL
         set(v) { require(v.startsWith("https://") && v.endsWith("/")); p.edit().putString("portal", v).apply() }
     /** Temporary safety lock: every network/playback stage requires a button press. */
+    /** Upgrade from the manual diagnostic build: return to automated boot exactly once. */
+    fun prepareProductionStartup() {
+        if(!p.getBoolean("automatic_boot_migrated_048",false)){
+            check(p.edit().putBoolean("diagnostic_manual_start",false)
+                .putBoolean("automatic_boot_migrated_048",true).commit())
+        }
+    }
     var diagnosticMode:Boolean
         get()=p.getBoolean("diagnostic_manual_start",false)
         set(value){p.edit().putBoolean("diagnostic_manual_start",value).commit()}

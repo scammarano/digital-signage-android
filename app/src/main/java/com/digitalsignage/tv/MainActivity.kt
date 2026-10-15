@@ -34,6 +34,7 @@ class MainActivity : Activity() {
     private var panel:LinearLayout?=null
     private var status:TextView?=null
     private var startingSplash=false
+    private var recoveryMode=false
     private var overlayRunning=false
     private var activeMode=-1
     private var playlistIdentity=""
@@ -60,9 +61,10 @@ class MainActivity : Activity() {
     }}
     override fun onCreate(savedInstanceState:Bundle?){super.onCreate(savedInstanceState)
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-        settings=SettingsStore(this);token=SecureToken(this);cache=CacheManager(this,settings);logs=DeviceLogs(this)
+        settings=SettingsStore(this);settings.prepareProductionStartup();token=SecureToken(this);cache=CacheManager(this,settings);logs=DeviceLogs(this)
         logs.record("info","activity","Reproductor iniciado")
         if(logs.recentCrash()) {
+            recoveryMode=true
             showRecoveryError("Se detectó un cierre inesperado. Los logs quedaron guardados para enviarlos al portal.")
             worker.execute {try{token.load()?.let{logs.upload(SignageApi(settings.portalUrl,it))}}catch(_:Exception){}}
             return
@@ -89,7 +91,7 @@ class MainActivity : Activity() {
         }
     }
     override fun onDestroy(){ui.removeCallbacks(tick);deck?.clear();worker.shutdownNow();super.onDestroy()}
-    override fun onResume(){super.onResume();if(::settings.isInitialized && !settings.diagnosticMode && !startingSplash && token.load()!=null){lastSync=0L;sync();}}
+    override fun onResume(){super.onResume();if(::settings.isInitialized && !recoveryMode && !settings.diagnosticMode && !startingSplash && token.load()!=null){lastSync=0L;sync();}}
     override fun onKeyDown(keyCode:Int,event:KeyEvent?):Boolean {
         if(keyCode==KeyEvent.KEYCODE_MENU || (keyCode==KeyEvent.KEYCODE_DPAD_CENTER && (event?.isLongPress==true))){openSettings();return true}
         return super.onKeyDown(keyCode,event)
@@ -108,7 +110,7 @@ class MainActivity : Activity() {
         box.addView(ScreenStyles.label(this,"DIGITAL SIGNAGE · RECUPERACIÓN",25f))
         box.addView(ScreenStyles.label(this,message,16f))
         box.addView(ScreenStyles.button(this,"Enviar logs y sincronizar ahora"){
-            logs.acknowledgeCrash();sync();showConnectingSafe()
+            logs.acknowledgeCrash();recoveryMode=false;sync();showConnectingSafe()
         })
         box.addView(ScreenStyles.button(this,"Buscar actualización de APK"){checkAppUpdates(true)})
         box.addView(ScreenStyles.button(this,"Diagnóstico por pasos"){startActivity(Intent(this,DiagnosticHomeActivity::class.java))})
@@ -187,7 +189,7 @@ class MainActivity : Activity() {
         }
         val media=FrameLayout(this).apply{setBackgroundColor(0xFF020609.toInt())}
         val params=if(smart)FrameLayout.LayoutParams(-1,0).apply{height=(resources.displayMetrics.heightPixels*(100-settings.smartHeaderPct)/100f).toInt();gravity=Gravity.BOTTOM} else FrameLayout.LayoutParams(-1,-1)
-        root.addView(media,params);stage=media;deck=MediaDeck(media,cache,settings.videoAudio)
+        root.addView(media,params);stage=media;deck=MediaDeck(media,cache,if(smart)false else settings.videoAudio)
         val hud=ScreenStyles.label(this,"Digital Signage",13f).apply{setBackgroundColor(0x990A1424.toInt());gravity=Gravity.END}
         status=hud
         if(settings.signageShowHud && settings.signageHudSeconds>0){
