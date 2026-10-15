@@ -14,6 +14,8 @@ class SignageApi(private val baseUrl:String, private val token:String?) {
     }
     fun manifest()=call("api-device.php?op=manifest")
     fun live()=call("api-device.php?op=live")
+    fun desiredConfig()=call("api-device-config.php?op=desired")
+    fun reportConfig(data:JSONObject)=call("api-device-config.php?op=report",data)
     fun heartbeat(data:JSONObject)=call("api-device.php?op=heartbeat",data)
     private fun call(path:String,payload:JSONObject?=null):JSONObject {
         val url=URL(baseUrl+path)

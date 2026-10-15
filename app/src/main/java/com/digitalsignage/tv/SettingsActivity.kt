@@ -63,6 +63,27 @@ class SettingsActivity:Activity(){
             AlertDialog.Builder(this).setTitle("Cambiar PIN").setView(input).setNegativeButton("Cancelar",null)
              .setPositiveButton("Guardar"){_,_->try{config.setPin(input.text.toString())}catch(_:Exception){}}.show()
         })
+        field("Puerto del panel LAN (1024–65535)",config.localAdminPort.toString()){config.localAdminPort=it.toInt()}
+        root.addView(ScreenStyles.button(this,"Iniciar panel web local durante 30 min"){
+            config.setLocalAdminEnabled(true)
+            val intent=Intent(this,LocalAdminService::class.java).setAction(LocalAdminService.ACTION_START)
+            try{startForegroundService(intent)}catch(e:Exception){config.setLocalAdminEnabled(false)}
+            android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
+                val url=LocalAdminService.runningUrl
+                val code=LocalAdminService.pairingCode
+                AlertDialog.Builder(this).setTitle("Administración desde laptop")
+                  .setMessage(if(url.isNotBlank())"Abre en tu navegador:\n$url\n\nCódigo temporal: $code\n\nNo expongas este puerto a Internet. Se cierra automáticamente en 30 minutos."
+                    else "No pudo iniciarse: ${LocalAdminService.lastError}")
+                  .setPositiveButton("Cerrar",null).show()
+            },650)
+        })
+        root.addView(ScreenStyles.button(this,"Cerrar administración LAN"){
+            startService(Intent(this,LocalAdminService::class.java).setAction(LocalAdminService.ACTION_STOP))
+        })
+        root.addView(ScreenStyles.button(this,"Respaldar configuración local"){
+            val file=config.backupSnapshot("manual-from-tv")
+            AlertDialog.Builder(this).setTitle("Respaldo creado").setMessage("Respaldo local:\n${file.name}\nNo contiene PIN ni token del dispositivo.").setPositiveButton("Aceptar",null).show()
+        })
         root.addView(ScreenStyles.button(this,"Desvincular dispositivo"){
             AlertDialog.Builder(this).setTitle("Desvincular dispositivo").setMessage("Requerirá un código nuevo. La programación local se conserva hasta que la borres.")
               .setNegativeButton("Cancelar",null).setPositiveButton("Desvincular"){_,_->SecureToken(this).clear();stopService(Intent(this,OverlayService::class.java));finish()}.show()

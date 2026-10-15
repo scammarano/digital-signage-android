@@ -51,8 +51,9 @@ class OverlayService:Service(){
         if(now-lastFetch>settings.syncMinutes*60000L&&!syncing){syncing=true;lastFetch=now
             worker.execute{
                 try{val secret=SecureToken(this).load()?:return@execute;val api=SignageApi(settings.portalUrl,secret)
+                    try{DeviceConfigSync(settings,api).poll()}catch(_:Exception){}
                     cache.sync(api,api.manifest()){};
-                    api.heartbeat(JSONObject().put("app_version","0.4.0").put("active_mode",2).put("cached_media",cache.countMedia()).put("free_storage_bytes",cache.freeBytes()))
+                    api.heartbeat(JSONObject().put("app_version","0.4.1").put("active_mode",2).put("cached_media",cache.countMedia()).put("free_storage_bytes",cache.freeBytes()))
                 }catch(_:Exception){}finally{syncing=false}
             }
         }

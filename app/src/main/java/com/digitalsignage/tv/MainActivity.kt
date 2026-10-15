@@ -187,11 +187,14 @@ class MainActivity : Activity() {
         worker.execute{
             try{
                 val api=SignageApi(settings.portalUrl,secret)
+                // Apply remote settings first; the player then uses the new preferences.
+                // If the remote config endpoint is temporarily unavailable, preserve cached playback.
+                try{DeviceConfigSync(settings,api).poll()}catch(e:Exception){lastError="Configuración remota: ${e.message}"}
                 val obj=api.manifest()
                 cache.sync(api,obj){msg->ui.post{status?.apply{visibility=View.VISIBLE;text=msg}}}
                 val model=ManifestModel(obj)
                 ui.post{manifest=model;lastLive=model.widget();syncInFlight=false;showMode();selectPlaylist();drawLiveBoard();status?.postDelayed({status?.visibility=View.GONE},3500)}
-                api.heartbeat(JSONObject().put("app_version","0.4.0").put("active_mode",model.activeMode(settings))
+                api.heartbeat(JSONObject().put("app_version","0.4.1").put("active_mode",model.activeMode(settings))
                  .put("cached_media",cache.countMedia()).put("free_storage_bytes",cache.freeBytes()).put("last_error",lastError.take(200)))
             }catch(e:Exception){lastError=e.message?:"Error de sincronización";ui.post{syncInFlight=false;if((manifest==null||!settings.offlinePlayback)&&token.load()!=null)showOfflineError();else status?.apply{visibility=View.VISIBLE;text="Sin conexión, reproduciendo caché: $lastError"}}}
         }
