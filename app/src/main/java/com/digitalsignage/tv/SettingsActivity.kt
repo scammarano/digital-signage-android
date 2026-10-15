@@ -53,6 +53,10 @@ class SettingsActivity:Activity(){
                         .setPositiveButton("Aceptar",null).show()
                 }.setNegativeButton("Cancelar",null).show()
         })
+        root.addView(ScreenStyles.label(this,"Modo principal remoto: "+arrayOf("","Cartelera","Overlay","Pantalla inteligente")[config.primaryMode],16f))
+        root.addView(ScreenStyles.button(this,"Buscar actualización de APK ahora"){AppUpdater.check(this,config,true)})
+        root.addView(ScreenStyles.button(this,"Instalar APK ya descargada"){AppUpdater.installCached(this)})
+        root.addView(ScreenStyles.label(this,"Actualizaciones: "+when(config.updatePolicy){0->"Manual";1->"Avisar";else->"Descargar y confirmar"}+" · "+config.updateChannel,15f))
         root.addView(ScreenStyles.button(this,"Diagnóstico y logs locales"){
             startActivity(Intent(this,DiagnosticsActivity::class.java))
         })

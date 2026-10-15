@@ -44,6 +44,7 @@ class MainActivity : Activity() {
     private var lastError=""
     private lateinit var logs:DeviceLogs
     private var lastControlPoll=0L
+    private var lastAppUpdateCheck=0L
     private var remoteControlRevision=0L
     private var syncInFlight=false
     private var lastLive=JSONObject()
@@ -70,9 +71,9 @@ class MainActivity : Activity() {
             val brand=ScreenStyles.label(this,"DIGITAL SIGNAGE TV",36f).apply{gravity=Gravity.CENTER;textAlignment=View.TEXT_ALIGNMENT_CENTER}
             splash.addView(brand,FrameLayout.LayoutParams(-1,-1))
             setContentView(splash)
-            ui.postDelayed({startingSplash=false; if(token.load()==null)showPairing() else {showMode();sync()}; ui.post(tick)},900)
+            ui.postDelayed({startingSplash=false; if(token.load()==null)showPairing() else {showMode();sync();checkAppUpdates()}; ui.post(tick)},900)
         }else{
-            if(token.load()==null)showPairing() else showMode()
+            if(token.load()==null)showPairing() else {showMode();checkAppUpdates()}
             ui.postDelayed(tick,1000)
         }
     }
@@ -81,6 +82,13 @@ class MainActivity : Activity() {
     override fun onKeyDown(keyCode:Int,event:KeyEvent?):Boolean {
         if(keyCode==KeyEvent.KEYCODE_MENU || (keyCode==KeyEvent.KEYCODE_DPAD_CENTER && (event?.isLongPress==true))){openSettings();return true}
         return super.onKeyDown(keyCode,event)
+    }
+    private fun checkAppUpdates(force:Boolean=false) {
+        if(!::settings.isInitialized || token.load()==null)return
+        if(!force && settings.updatePolicy==0)return
+        if(!force && System.currentTimeMillis()-lastAppUpdateCheck<30L*60L*1000L)return
+        lastAppUpdateCheck=System.currentTimeMillis()
+        AppUpdater.check(this,settings,force)
     }
     private fun openSettings(){startActivity(Intent(this,SettingsActivity::class.java))}
     private fun openDiagnostics(){startActivity(Intent(this,DiagnosticsActivity::class.java))}
@@ -91,6 +99,7 @@ class MainActivity : Activity() {
         box.addView(ScreenStyles.button(this,"Enviar logs y sincronizar ahora"){
             logs.acknowledgeCrash();sync();showConnectingSafe()
         })
+        box.addView(ScreenStyles.button(this,"Buscar actualización de APK"){checkAppUpdates(true)})
         box.addView(ScreenStyles.button(this,"Ver diagnóstico") {openDiagnostics()})
         box.addView(ScreenStyles.button(this,"Configuración / modo") {openSettings()})
         setContentView(android.widget.ScrollView(this).apply{addView(box)})
@@ -123,7 +132,7 @@ class MainActivity : Activity() {
                     val reply=SignageApi(settings.portalUrl,null).pair(entered)
                     token.save(reply.getString("token"))
                     logs.record("info","pairing","Vinculación guardada","device_id=${reply.optInt("device_id")}")
-                    ui.post { line.text="Vinculado. Sincronizando...";showMode();sync() }
+                    ui.post { line.text="Vinculado. Sincronizando...";showMode();sync();checkAppUpdates() }
                 }catch(e:Exception){logs.record("error","pairing",e.javaClass.simpleName,e.message?:"")
                     ui.post { line.text="Error: ${e.message}" }}
             }
@@ -234,6 +243,7 @@ class MainActivity : Activity() {
         }
         if(System.currentTimeMillis()-lastSync>settings.syncMinutes*60000L)sync()
         if(System.currentTimeMillis()-lastControlPoll>=15000L)checkRemoteSync()
+        checkAppUpdates()
         if(activeMode==3&&System.currentTimeMillis()-lastLivePoll>30000L)pollLive()
     }
     private fun pollLive(){val secret=token.load()?:return;lastLivePoll=System.currentTimeMillis()
@@ -273,7 +283,7 @@ class MainActivity : Activity() {
                 }
                 val model=ManifestModel(obj)
                 ui.post{manifest=model;lastLive=model.widget();syncInFlight=false;showMode();selectPlaylist();drawLiveBoard();status?.postDelayed({status?.visibility=View.GONE},3500)}
-                api.heartbeat(JSONObject().put("app_version","0.4.4").put("active_mode",model.activeMode(settings))
+                api.heartbeat(JSONObject().put("app_version","0.4.5").put("active_mode",model.activeMode(settings))
                  .put("cached_media",cache.countMedia()).put("free_storage_bytes",cache.freeBytes()).put("last_error",lastError.take(200)))
             }catch(e:Exception){lastError=e.message?:"Error de sincronización"
                 logs.record("error","sync",e.javaClass.simpleName,lastError)

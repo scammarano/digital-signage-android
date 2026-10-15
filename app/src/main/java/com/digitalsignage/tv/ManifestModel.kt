@@ -22,7 +22,7 @@ class ManifestModel(val json:JSONObject){
                 r.optString("valid_until").takeIf{it.isNotBlank()&&it!="null"},r.optInt("priority"),r.optInt("enabled",1)==1))
         }
         val remoteMask=json.optJSONObject("device_options")?.optInt("modes_enabled",7)?:7
-        return TimeRules.mode(blocks,json.optInt("mode",1),settings.enabledModes and remoteMask,localNow())
+        return TimeRules.mode(blocks,settings.primaryMode,settings.enabledModes and remoteMask,localNow())
     }
     fun entries():JSONArray {
         val rows=json.optJSONArray("schedules")?:JSONArray();val matches=ArrayList<JSONObject>();val now=localNow()

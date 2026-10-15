@@ -30,6 +30,15 @@ class SettingsStore(private val context: Context) {
     var enabledModes: Int
         get() = p.getInt("enabled_modes",7) and 7
         set(v) = p.edit().putInt("enabled_modes",v and 7).apply()
+    var primaryMode:Int
+        get()=p.getInt("primary_mode",1).coerceIn(1,3)
+        set(v){require(v in 1..3);p.edit().putInt("primary_mode",v).apply()}
+    var updatePolicy:Int
+        get()=p.getInt("update_policy",2).coerceIn(0,2)
+        set(v){require(v in 0..2);p.edit().putInt("update_policy",v).apply()}
+    var updateChannel:String
+        get()=p.getString("update_channel","debug")?.takeIf{it in listOf("stable","beta","debug")} ?: "debug"
+        set(v){require(v in listOf("stable","beta","debug"));p.edit().putString("update_channel",v).apply()}
     var syncMinutes: Int
         get() = p.getInt("sync_minutes",1).coerceIn(1,60)
         set(v) = p.edit().putInt("sync_minutes",v.coerceIn(1,60)).apply()
@@ -74,6 +83,7 @@ class SettingsStore(private val context: Context) {
     fun publicSnapshot():org.json.JSONObject = org.json.JSONObject().apply {
         put("auto_start",autoStart);put("splash",splash);put("video_audio",videoAudio)
         put("offline_playback",offlinePlayback);put("enabled_modes",enabledModes)
+        put("primary_mode",primaryMode);put("update_policy",updatePolicy);put("update_channel",updateChannel)
         put("sync_minutes",syncMinutes);put("cache_mb",cacheMb);put("external_cache",externalCache)
         put("overlay_interval_sec",overlayIntervalSec);put("overlay_duration_sec",overlayDurationSec)
     }
@@ -92,13 +102,20 @@ class SettingsStore(private val context: Context) {
     fun localAdminEnabled()=p.getBoolean("lan_admin_enabled",false)
     fun setLocalAdminEnabled(on:Boolean)=p.edit().putBoolean("lan_admin_enabled",on).commit()
     fun validateSettings(j:org.json.JSONObject):org.json.JSONObject {
-        val keys=setOf("auto_start","splash","video_audio","offline_playback","enabled_modes", "sync_minutes","cache_mb","external_cache","overlay_interval_sec","overlay_duration_sec")
+        val keys=setOf("auto_start","splash","video_audio","offline_playback","enabled_modes", "sync_minutes","cache_mb","external_cache","overlay_interval_sec","overlay_duration_sec","primary_mode","update_policy","update_channel")
         val itr=j.keys();while(itr.hasNext())require(itr.next() in keys){"Parámetro no reconocido"}
         fun boolean(k:String):Boolean{require(j.has(k) && j.get(k) is Boolean){"Tipo de $k inválido"};return j.getBoolean(k)}
         fun integer(k:String,min:Int,max:Int):Int{require(j.has(k)&&j.get(k) is Int){"Tipo de $k inválido"};val v=j.getInt(k);require(v in min..max){"$k fuera de rango"};return v}
         val out=org.json.JSONObject()
         for(k in listOf("auto_start","splash","video_audio","offline_playback","external_cache"))out.put(k,boolean(k))
         out.put("enabled_modes",integer("enabled_modes",1,7))
+        out.put("primary_mode",integer("primary_mode",1,3))
+        out.put("update_policy",integer("update_policy",0,2))
+        require(j.has("update_channel") && j.get("update_channel") is String){"Canal inválido"}
+        val channel=j.getString("update_channel")
+        require(channel in listOf("stable","beta","debug")){"Canal inválido"}
+        out.put("update_channel",channel)
+        require(out.getInt("enabled_modes") and (1 shl (out.getInt("primary_mode")-1))!=0){"Modo principal no habilitado"}
         out.put("sync_minutes",integer("sync_minutes",1,60))
         out.put("cache_mb",integer("cache_mb",128,16384))
         out.put("overlay_interval_sec",integer("overlay_interval_sec",60,86400))
@@ -112,7 +129,8 @@ class SettingsStore(private val context: Context) {
         if(newRevision!=null)require(newRevision>=0)
         val e=p.edit()
         for(k in listOf("auto_start","splash","video_audio","offline_playback","external_cache"))e.putBoolean(k,v.getBoolean(k))
-        for(k in listOf("enabled_modes","sync_minutes","cache_mb","overlay_interval_sec","overlay_duration_sec"))e.putInt(k,v.getInt(k))
+        for(k in listOf("enabled_modes","primary_mode","update_policy","sync_minutes","cache_mb","overlay_interval_sec","overlay_duration_sec"))e.putInt(k,v.getInt(k))
+        e.putString("update_channel",v.getString("update_channel"))
         if(newRevision!=null)e.putLong("remote_revision",newRevision)
         return e.commit()
     }

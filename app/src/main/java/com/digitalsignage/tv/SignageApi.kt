@@ -14,6 +14,10 @@ class SignageApi(private val baseUrl:String, private val token:String?) {
     }
     fun manifest()=call("api-device.php?op=manifest")
     fun live()=call("api-device.php?op=live")
+    fun latestUpdate(channel:String,sdk:Int):JSONObject {
+        require(channel in listOf("stable","beta","debug"))
+        return call("api-app-update.php?channel=$channel&sdk=$sdk")
+    }
     fun desiredConfig()=call("api-device-config.php?op=desired")
     fun reportConfig(data:JSONObject)=call("api-device-config.php?op=report",data)
     fun heartbeat(data:JSONObject)=call("api-device.php?op=heartbeat",data)
