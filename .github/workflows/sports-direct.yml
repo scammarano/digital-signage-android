@@ -34,6 +34,8 @@ jobs:
           grep -q 'onShown:()->Unit' app/src/main/java/com/digitalsignage/tv/MediaDeck.kt
           grep -q 'refreshDebugOverlay()' app/src/main/java/com/digitalsignage/tv/OverlayService.kt
           grep -q 'config_$stage' app/src/main/java/com/digitalsignage/tv/DeviceDebug.kt
+      - name: Verify three Android configuration entry points
+        run: python3 scripts/check_config_parity.py
       - name: Test shared rules and build Fire APK
         run: gradle --no-daemon :sports-core:test :app:assembleDebug :app:assembleDebugAndroidTest --stacktrace
       - name: Verify signature and legacy compatibility
