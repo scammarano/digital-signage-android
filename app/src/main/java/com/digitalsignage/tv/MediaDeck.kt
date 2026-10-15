@@ -28,8 +28,8 @@ class MediaDeck(private val stage:FrameLayout,private val cache:CacheManager,pri
         val height=stage.height.takeIf{it>0}?:stage.resources.displayMetrics.heightPixels
         val layout=item.optString("layout","fullscreen")
         return when(layout){
-          "bottom"->FrameLayout.LayoutParams(width,(height*0.24).toInt().coerceAtLeast(100),Gravity.BOTTOM)
-          "side"->FrameLayout.LayoutParams((width*0.28).toInt().coerceAtLeast(100),height,Gravity.END)
+          "bottom"->FrameLayout.LayoutParams(width,(height*0.20f).toInt().coerceAtLeast(1),Gravity.BOTTOM)
+          "side"->FrameLayout.LayoutParams((width*0.40f).toInt().coerceAtLeast(1),height,Gravity.END)
           "half_horizontal"->FrameLayout.LayoutParams(width,height/2,Gravity.BOTTOM)
           "half_vertical"->FrameLayout.LayoutParams(width/2,height,Gravity.END)
           else->FrameLayout.LayoutParams(-1,-1)

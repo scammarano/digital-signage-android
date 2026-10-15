@@ -49,7 +49,7 @@ jobs:
       - name: Upload signed development build artifact
         uses: actions/upload-artifact@v4
         with:
-          name: 2Cam-Digital-Signage-v0.4.8-Modos-Operativos-debug
+          name: 2Cam-Digital-Signage-v0.4.9-Medios-20-40-API19-debug
           path: |
             app/build/outputs/apk/debug/app-debug.apk
             app/build/outputs/apk/debug/apk-metadata.txt
