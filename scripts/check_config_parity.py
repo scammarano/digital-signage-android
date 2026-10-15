@@ -52,7 +52,7 @@ for key,prop in expected.items():
         fail("LAN form/save omits "+key)
     if '"'+key+'"' not in apply:
         fail("atomic persistence omits "+key)
-if "mode_1" not in lan or "mode_$bit" not in lan:
+if "for((bit,title) in listOf(1 to" not in lan or "mode_$bit" not in lan:
     fail("LAN mode mask isn't made from visible checkboxes")
 if "settings.validateSettings(" not in remote or "settings.applySnapshot(" not in remote:
     fail("remote config bypasses canonical validation/persistence")
