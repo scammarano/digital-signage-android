@@ -152,6 +152,7 @@ class MainActivity : Activity() {
             }
         })
         box.addView(ScreenStyles.button(this,"Configuración local (PIN)"){openSettings()})
+        box.addView(ScreenStyles.button(this,"Sports local · enlazar tablet"){openSettings()})
         setContentView(box)
     }
     private fun showMode(){
@@ -321,7 +322,7 @@ class MainActivity : Activity() {
                 }
                 val model=ManifestModel(obj)
                 ui.post{manifest=model;lastLive=model.widget();syncInFlight=false;showMode();selectPlaylist();drawLiveBoard();status?.postDelayed({status?.visibility=View.GONE},3500)}
-                api.heartbeat(JSONObject().put("app_version","0.4.9").put("active_mode",model.activeMode(settings))
+                api.heartbeat(JSONObject().put("app_version","0.4.10").put("active_mode",model.activeMode(settings))
                  .put("cached_media",cache.countMedia()).put("free_storage_bytes",cache.freeBytes()).put("last_error",lastError.take(200)))
             }catch(e:Exception){lastError=e.message?:"Error de sincronización"
                 logs.record("error","sync",e.javaClass.simpleName,lastError)

@@ -97,6 +97,9 @@ class SettingsActivity:Activity(){
         field("Alto franja Overlay (%)",config.overlayHeightPct.toString()){config.overlayHeightPct=it.toInt()}
         field("Opacidad Overlay (%)",config.overlayOpacity.toString()){config.overlayOpacity=it.toInt()}
         root.addView(ScreenStyles.label(this,"PANTALLA INTELIGENTE",24f))
+        root.addView(ScreenStyles.button(this,"SPORTS LOCAL · tablet directa al Fire (sin PC)"){
+            startActivity(Intent(this,SportsActivity::class.java))
+        })
         select("Aplicación",config.smartApp,listOf("queue" to "Sala de espera / Turnos","scoreboard" to "Marcador / Puntos")){config.smartApp=it}
         field("Área superior inteligente (%)",config.smartHeaderPct.toString()){config.smartHeaderPct=it.toInt()}
         field("Refrescar Turnos / Marcador (seg)",config.smartPollSec.toString()){config.smartPollSec=it.toInt()}
