@@ -113,6 +113,14 @@ object AppUpdater {
             "El certificado de esta versión no coincide con la APK instalada. Es necesaria una única reinstalación manual para adoptar una clave de firma persistente. Se ha bloqueado la actualización incompatible."
         }
     }
+    private fun hashFile(file:File):String {
+        val digest=MessageDigest.getInstance("SHA-256")
+        file.inputStream().use { input ->
+            val buf=ByteArray(32768)
+            while(true){val n=input.read(buf);if(n<0)break;digest.update(buf,0,n)}
+        }
+        return digest.digest().joinToString(""){"%02x".format(it.toInt() and 255)}
+    }
     fun installCached(activity:Activity){
         try {
             val dir=File(activity.filesDir,"apk-updates")
@@ -121,8 +129,7 @@ object AppUpdater {
             require(file.isFile && saved.isFile){"Todavía no hay una actualización descargada"}
             val info=JSONObject(saved.readText())
             val expected=info.getString("sha256")
-            require(expected.matches(Regex("[a-f0-9]{64}")) && MessageDigest.getInstance("SHA-256")
-                .digest(file.readBytes()).joinToString(""){"%02x".format(it.toInt() and 255)}==expected){"APK descargada alterada"}
+            require(expected.matches(Regex("[a-f0-9]{64}")) && hashFile(file)==expected){"APK descargada alterada"}
             verifyIdentity(activity,file,info)
             if(Build.VERSION.SDK_INT>=26 && !activity.packageManager.canRequestPackageInstalls()){
                 message(activity,"Autorización requerida","Permite instalaciones desde Digital Signage y después pulsa «Instalar APK ya descargada» en Configuración.")
