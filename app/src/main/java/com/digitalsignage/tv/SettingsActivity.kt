@@ -61,7 +61,7 @@ class SettingsActivity:Activity(){
                         .setPositiveButton("Aceptar",null).show()
                 }.setNegativeButton("Cancelar",null).show()
         })
-        root.addView(ScreenStyles.label(this,"Modo principal remoto: "+arrayOf("","Cartelera","Overlay","Pantalla inteligente")[config.primaryMode],16f))
+        root.addView(ScreenStyles.label(this,"Modo principal configurado: "+arrayOf("","Cartelera","Overlay","Pantalla inteligente")[config.primaryMode],16f))
         root.addView(ScreenStyles.button(this,"Abrir diagnóstico de soporte"){
             startActivity(Intent(this,DiagnosticHomeActivity::class.java))
         })
@@ -102,13 +102,32 @@ class SettingsActivity:Activity(){
         field("Refrescar Turnos / Marcador (seg)",config.smartPollSec.toString()){config.smartPollSec=it.toInt()}
         toggle("Aviso sonoro al llamar turno",config.smartSound){config.smartSound=it}
         root.addView(ScreenStyles.label(this,"GENERAL",24f))
+        select("Modo principal",config.primaryMode.toString(),listOf("1" to "Cartelera","2" to "Overlay","3" to "Pantalla inteligente")){choice->
+            val mode=choice.toInt()
+            if(config.enabledModes and (1 shl (mode-1)) !=0)config.primaryMode=mode
+            else android.widget.Toast.makeText(this,"Habilita primero este modo",android.widget.Toast.LENGTH_LONG).show()
+        }
+        select("Actualización APK",config.updatePolicy.toString(),listOf("0" to "Manual","1" to "Avisar","2" to "Descargar y pedir instalación")){config.updatePolicy=it.toInt()}
+        select("Canal de actualización",config.updateChannel,listOf("stable" to "Estable","beta" to "Beta","debug" to "Pruebas")){config.updateChannel=it}
         toggle("Arrancar automáticamente cuando Android lo permita",config.autoStart){config.autoStart=it}
         toggle("Mostrar logo al iniciar la app",config.splash){config.splash=it}
         toggle("Mantener último contenido offline",config.offlinePlayback){config.offlinePlayback=it}
         toggle("Reproducir audio en videos de cartelera",config.videoAudio){config.videoAudio=it}
-        toggle("Habilitar Cartelera",config.enabledModes and 1!=0){config.enabledModes=if(it)config.enabledModes or 1 else config.enabledModes and 1.inv()}
-        toggle("Habilitar Overlay",config.enabledModes and 2!=0){config.enabledModes=if(it)config.enabledModes or 2 else config.enabledModes and 2.inv()}
-        toggle("Habilitar Pantalla inteligente",config.enabledModes and 4!=0){config.enabledModes=if(it)config.enabledModes or 4 else config.enabledModes and 4.inv()}
+        fun toggleMode(bit:Int,enabled:Boolean){
+            val mask=if(enabled)config.enabledModes or bit else config.enabledModes and bit.inv()
+            if(mask==0){
+                android.widget.Toast.makeText(this,"Mantén habilitado al menos un modo",android.widget.Toast.LENGTH_LONG).show()
+            }else{
+                config.enabledModes=mask
+                if(mask and (1 shl (config.primaryMode-1))==0){
+                    config.primaryMode=when{mask and 1!=0->1;mask and 2!=0->2;else->3}
+                }
+            }
+            showSettings()
+        }
+        toggle("Habilitar Cartelera",config.enabledModes and 1!=0){toggleMode(1,it)}
+        toggle("Habilitar Overlay",config.enabledModes and 2!=0){toggleMode(2,it)}
+        toggle("Habilitar Pantalla inteligente",config.enabledModes and 4!=0){toggleMode(4,it)}
         toggle("Almacenar caché en espacio externo propio de la app",config.externalCache){config.externalCache=it}
         field("Límite de caché en MB",config.cacheMb.toString()){config.cacheMb=it.toInt()}
         field("Sincronización cada N minutos",config.syncMinutes.toString()){config.syncMinutes=it.toInt()}
