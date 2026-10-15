@@ -64,11 +64,19 @@ class MainActivity : Activity() {
             worker.execute {try{token.load()?.let{logs.upload(SignageApi(settings.portalUrl,it))}}catch(_:Exception){}}
             return
         }
+        // Diagnostic build: reproduce ONLY after the user chooses it from the launcher.
+        // No automatic sync, overlay, playback, or update check on this path.
+        if(settings.diagnosticMode){
+            logs.record("info","player","Manual player stage requested")
+            reloadFromDisk()
+            if(manifest==null)showOfflineError() else showMode()
+            return
+        }
         reloadFromDisk()
         if(settings.splash){
             startingSplash=true
             val splash=FrameLayout(this).apply{setBackgroundColor(ScreenStyles.BACKGROUND)}
-            val brand=ScreenStyles.label(this,"DIGITAL SIGNAGE TV",36f).apply{gravity=Gravity.CENTER;textAlignment=View.TEXT_ALIGNMENT_CENTER}
+            val brand=ScreenStyles.label(this,"2Cam Digital Signage",36f).apply{gravity=Gravity.CENTER;textAlignment=View.TEXT_ALIGNMENT_CENTER}
             splash.addView(brand,FrameLayout.LayoutParams(-1,-1))
             setContentView(splash)
             ui.postDelayed({startingSplash=false; if(token.load()==null)showPairing() else {showMode();sync();checkAppUpdates()}; ui.post(tick)},900)
@@ -78,7 +86,7 @@ class MainActivity : Activity() {
         }
     }
     override fun onDestroy(){ui.removeCallbacks(tick);deck?.clear();worker.shutdownNow();super.onDestroy()}
-    override fun onResume(){super.onResume();if(::settings.isInitialized && !startingSplash && token.load()!=null){lastSync=0L;sync();}}
+    override fun onResume(){super.onResume();if(::settings.isInitialized && !settings.diagnosticMode && !startingSplash && token.load()!=null){lastSync=0L;sync();}}
     override fun onKeyDown(keyCode:Int,event:KeyEvent?):Boolean {
         if(keyCode==KeyEvent.KEYCODE_MENU || (keyCode==KeyEvent.KEYCODE_DPAD_CENTER && (event?.isLongPress==true))){openSettings();return true}
         return super.onKeyDown(keyCode,event)
@@ -150,7 +158,7 @@ class MainActivity : Activity() {
     }
     private fun showConnecting(){
         val box=ScreenStyles.column(this)
-        box.addView(ScreenStyles.label(this,"Digital Signage · Sincronizando programación",25f))
+        box.addView(ScreenStyles.label(this,"2Cam Digital Signage · Sincronizando",25f))
         box.addView(ScreenStyles.label(this,"Conservará el último contenido completo cuando no haya Internet."))
         box.addView(ScreenStyles.button(this,"Sincronizar ahora"){sync()})
         box.addView(ScreenStyles.label(this,"Modo: configurado desde el portal o desde Ajustes locales.",15f))
@@ -208,7 +216,7 @@ class MainActivity : Activity() {
         setContentView(box)
     }
     private fun startOverlay(){if(overlayRunning)return
-        if(!Settings.canDrawOverlays(this))return
+        if(!AndroidCompat.canOverlay(this))return
         try{val intent=Intent(this,OverlayService::class.java);AndroidCompat.startServiceCompat(this,intent);overlayRunning=true}catch(e:Exception){lastError="Overlay no disponible: ${e.message}"}
     }
     private fun stopOverlay(){if(overlayRunning){stopService(Intent(this,OverlayService::class.java));overlayRunning=false}}
@@ -235,6 +243,7 @@ class MainActivity : Activity() {
         }
     }
     private fun pulse(){
+        if(settings.diagnosticMode)return
         if(token.load()==null)return
         val model=manifest
         if(model!=null){

@@ -26,6 +26,8 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
+      - name: Generate 2Cam launcher icon (PNG, Android 4.4 safe)
+        run: python3 scripts/create_icon.py
       - name: Compile APK
         run: gradle --no-daemon --stacktrace assembleDebug
       - name: Verify signed APK and Android 4.4 compatibility

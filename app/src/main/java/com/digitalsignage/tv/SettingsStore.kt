@@ -15,6 +15,10 @@ class SettingsStore(private val context: Context) {
     var portalUrl: String
         get() = p.getString("portal", DEFAULT_PORTAL) ?: DEFAULT_PORTAL
         set(v) { require(v.startsWith("https://") && v.endsWith("/")); p.edit().putString("portal", v).apply() }
+    /** Temporary safety lock: every network/playback stage requires a button press. */
+    var diagnosticMode:Boolean
+        get()=p.getBoolean("diagnostic_manual_start",true)
+        set(value){p.edit().putBoolean("diagnostic_manual_start",value).commit()}
     var autoStart: Boolean
         get() = p.getBoolean("auto_start", true)
         set(v) = p.edit().putBoolean("auto_start",v).apply()

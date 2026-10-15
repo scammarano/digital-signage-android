@@ -41,9 +41,17 @@ class SettingsActivity:Activity(){
         })
     }
     private fun showSettings(){root=ScreenStyles.column(this)
-        root.addView(ScreenStyles.label(this,"DIGITAL SIGNAGE · CONFIGURACIÓN",28f))
+        root.addView(ScreenStyles.label(this,"2CAM DIGITAL SIGNAGE · CONFIGURACIÓN",28f))
         root.addView(ScreenStyles.label(this,"Ajustes de este equipo, no modifican otras pantallas",16f))
         root.addView(ScreenStyles.label(this,"Android ${android.os.Build.VERSION.RELEASE} (API ${android.os.Build.VERSION.SDK_INT}) · ${LegacyProfile.description()}",14f))
+        root.addView(ScreenStyles.label(this,"Modo seleccionado: "+arrayOf("Según portal/horarios","Cartelera","Overlay","Pantalla inteligente")[config.manualMode],18f))
+        root.addView(ScreenStyles.label(this,"El botón verde indica el modo seleccionado.",15f))
+        listOf("Automático (portal)" to 0,"Cartelera" to 1,"Overlay" to 2,"Pantalla inteligente" to 3).forEach{ (title,value)->
+            root.addView(ScreenStyles.button(this,title,config.manualMode==value){
+                config.manualMode=value
+                showSettings()
+            })
+        }
         root.addView(ScreenStyles.button(this,"Seleccionar modo local (para pruebas)"){
             val choices=arrayOf("Automático (según portal y horarios)","Cartelera","Overlay","Pantalla inteligente")
             AlertDialog.Builder(this).setTitle("Modo principal")
