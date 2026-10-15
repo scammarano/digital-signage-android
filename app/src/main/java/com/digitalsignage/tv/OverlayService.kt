@@ -29,6 +29,23 @@ class OverlayService:Service(){
     private lateinit var settings:SettingsStore;private lateinit var cache:CacheManager
     private var wm:WindowManager?=null;private var current:View?=null;private var nextAdAt=0L;private var hideAt=0L
     private var lastFetch=0L;private var index=0;private var syncing=false
+    private var lastDebugConfigPoll=0L
+    private fun pollDebugConfig(){
+        if(!settings.debugHudEnabled)return
+        val now=System.currentTimeMillis()
+        if(now-lastDebugConfigPoll<5000L)return
+        lastDebugConfigPoll=now
+        worker.execute{
+            try{
+                val secret=SecureToken(this).load()?:return@execute
+                val api=SignageApi(settings.portalUrl,secret)
+                DeviceConfigSync(settings,api){stage,rev,detail->
+                    DeviceDebug.record(this,DeviceLogs(this),stage,rev,detail)
+                }.poll()
+                try{DeviceLogs(this).upload(api)}catch(_:Exception){}
+            }catch(_:Exception){}
+        }
+    }
     private val ticker=object:Runnable{override fun run(){try{pulse()}finally{handler.postDelayed(this,1000)}}}
     override fun onCreate(){super.onCreate();settings=SettingsStore(this);cache=CacheManager(this,settings)
         startForeground(91, AndroidCompat.notification(this, "signage_overlay", "Digital Signage Overlay",
@@ -40,6 +57,7 @@ class OverlayService:Service(){
     override fun onStartCommand(intent:Intent?,flags:Int,startId:Int):Int=START_STICKY
     override fun onDestroy(){handler.removeCallbacks(ticker);hide();worker.shutdownNow();super.onDestroy()}
     private fun pulse(){
+        pollDebugConfig()
         if(!AndroidCompat.canOverlay(this)){hide();stopSelf();return}
         val model=cache.active()?.let{ManifestModel(it)}?:return
         if(model.activeMode(settings)!=2){hide();stopSelf();return}

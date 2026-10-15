@@ -104,6 +104,9 @@ class SettingsActivity:Activity(){
         field("Área superior inteligente (%)",config.smartHeaderPct.toString()){config.smartHeaderPct=it.toInt()}
         field("Refrescar Turnos / Marcador (seg)",config.smartPollSec.toString()){config.smartPollSec=it.toInt()}
         toggle("Aviso sonoro al llamar turno",config.smartSound){config.smartSound=it}
+        root.addView(ScreenStyles.label(this,"PRUEBAS Y TELEMETRÍA",24f))
+        toggle("DEBUG: versión, modo y confirmaciones sobre el contenido",config.debugHudEnabled){config.debugHudEnabled=it}
+        root.addView(ScreenStyles.label(this,"El modo DEBUG es local, sin alterar las campañas ni la configuración del portal.",15f))
         root.addView(ScreenStyles.label(this,"GENERAL",24f))
         select("Modo principal",config.primaryMode.toString(),listOf("1" to "Cartelera","2" to "Overlay","3" to "Pantalla inteligente")){choice->
             val mode=choice.toInt()

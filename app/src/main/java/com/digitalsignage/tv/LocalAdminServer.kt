@@ -128,6 +128,10 @@ class LocalAdminServer(private val context:Context,private val settings:Settings
             fun num(key:String,label:String,min:Int,max:Int){
                 opts.append("<label>${html(label)}<input type=number name='$key' min='$min' max='$max' value='${snap.optInt(key)}' required></label>")
             }
+            section("Diagnóstico y confirmaciones")
+            opts.append("<label><input type=checkbox name='debug_hud' value='1' " +
+                (if(settings.debugHudEnabled)"checked" else "") +
+                ">Activar panel DEBUG en pantalla</label>")
             section("Opciones generales")
             check("auto_start","Inicio automático")
             check("splash","Mostrar logo")
@@ -179,6 +183,7 @@ class LocalAdminServer(private val context:Context,private val settings:Settings
             if(params["csrf"]!=sha(sessionHash+"ds-lan-csrf")){respond(c,403,"Solicitud no autorizada");return}
             if(path=="/stop"){respond(c,200,page("<p>Panel local cerrado.</p>"),"","text/html; charset=utf-8");close();return}
             if(path=="/save"){
+                settings.debugHudEnabled=params["debug_hud"]=="1"
                 val o=JSONObject()
                 for(k in listOf("auto_start","splash","video_audio","offline_playback",
                     "external_cache","signage_show_hud","smart_sound"))o.put(k,params[k]=="1")

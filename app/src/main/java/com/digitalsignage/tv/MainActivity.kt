@@ -45,6 +45,25 @@ class MainActivity : Activity() {
     private var lastError=""
     private lateinit var logs:DeviceLogs
     private var lastControlPoll=0L
+    private var lastDebugConfigPoll=0L
+    private fun pollDebugConfig() {
+        if(!settings.debugHudEnabled || token.load()==null)return
+        val now=System.currentTimeMillis()
+        if(now-lastDebugConfigPoll<5000L)return
+        lastDebugConfigPoll=now
+        worker.execute {
+            try{
+                val api=SignageApi(settings.portalUrl,token.load())
+                DeviceConfigSync(settings,api){stage,rev,detail->
+                    DeviceDebug.record(this,logs,stage,rev,detail)
+                }.poll()
+                try{logs.upload(api)}catch(_:Exception){}
+            }catch(e:Exception){
+                logs.record("warn","debug_config_poll",e.javaClass.simpleName,
+                    (e.message?:"").take(180))
+            }
+        }
+    }
     private var lastAppUpdateCheck=0L
     private var remoteControlRevision=0L
     private var syncInFlight=false
@@ -260,6 +279,7 @@ class MainActivity : Activity() {
         }
     }
     private fun pulse(){
+        pollDebugConfig()
         if(settings.diagnosticMode)return
         if(token.load()==null)return
         val model=manifest

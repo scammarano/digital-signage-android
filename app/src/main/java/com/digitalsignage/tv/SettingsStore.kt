@@ -57,6 +57,10 @@ class SettingsStore(private val context: Context) {
     var smartSound:Boolean
         get()=p.getBoolean("smart_sound",false)
         set(v)=p.edit().putBoolean("smart_sound",v).apply()
+    /** Debug HUD is local-only until the portal ships schema v2. */
+    var debugHudEnabled:Boolean
+        get()=p.getBoolean("debug_hud",false)
+        set(v){p.edit().putBoolean("debug_hud",v).apply()}
     var autoStart: Boolean
         get() = p.getBoolean("auto_start", true)
         set(v) = p.edit().putBoolean("auto_start",v).apply()
