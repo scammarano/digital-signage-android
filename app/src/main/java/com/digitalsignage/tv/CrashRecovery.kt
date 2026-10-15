@@ -7,7 +7,7 @@ class CrashRecovery: androidx.multidex.MultiDexApplication() {
         super.onCreate()
         val previous=Thread.getDefaultUncaughtExceptionHandler()
         val logs=DeviceLogs(this)
-        logs.record("info","startup","Proceso iniciado","API ${Build.VERSION.SDK_INT}; version 0.4.7")
+        logs.record("info","startup","Proceso iniciado","API ${Build.VERSION.SDK_INT}; version 0.4.8")
         Thread.setDefaultUncaughtExceptionHandler { thread, error ->
             try{logs.record("fatal","uncaught",error.javaClass.simpleName+": "+(error.message?:""),
                 error.stackTrace.take(8).joinToString("\n"))}catch(_:Throwable){}

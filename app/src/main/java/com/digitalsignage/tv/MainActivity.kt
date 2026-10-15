@@ -49,6 +49,9 @@ class MainActivity : Activity() {
     private var syncInFlight=false
     private var lastLive=JSONObject()
     private var mode3Header:TextView?=null
+    private var lastSmartApp=""
+    private var lastSmartHeaderPct=0
+    private var lastCallSequence=-1L
     private val tick=object:Runnable{override fun run(){
         try{pulse()}catch(e:Throwable){
             try{logs.record("error","tick",e.javaClass.simpleName,e.message?:"")}catch(_:Throwable){}
@@ -108,7 +111,8 @@ class MainActivity : Activity() {
             logs.acknowledgeCrash();sync();showConnectingSafe()
         })
         box.addView(ScreenStyles.button(this,"Buscar actualización de APK"){checkAppUpdates(true)})
-        box.addView(ScreenStyles.button(this,"Ver diagnóstico") {openDiagnostics()})
+        box.addView(ScreenStyles.button(this,"Diagnóstico por pasos"){startActivity(Intent(this,DiagnosticHomeActivity::class.java))})
+        box.addView(ScreenStyles.button(this,"Ver logs") {openDiagnostics()})
         box.addView(ScreenStyles.button(this,"Configuración / modo") {openSettings()})
         setContentView(android.widget.ScrollView(this).apply{addView(box)})
     }
@@ -152,7 +156,9 @@ class MainActivity : Activity() {
         val model=manifest
         if(model==null){showConnecting();return}
         val mode=model.activeMode(settings)
-        if(mode==activeMode&&stage!=null)return
+        if(mode==activeMode && stage!=null && (mode!=3 ||
+           (lastSmartApp==settings.smartApp && lastSmartHeaderPct==settings.smartHeaderPct)))return
+        if(mode==3){lastSmartApp=settings.smartApp;lastSmartHeaderPct=settings.smartHeaderPct}
         activeMode=mode;playlistIdentity="";deck?.clear();deck=null;stage=null;mode3Header=null
         when(mode){1->showSignage(false);2->showOverlayControl();3->showSignage(true);else->showDisabled()}
     }
@@ -169,7 +175,7 @@ class MainActivity : Activity() {
     private fun showDisabled(){stopOverlay();val box=ScreenStyles.column(this)
         box.addView(ScreenStyles.label(this,"Pantalla en mantenimiento",26f))
         box.addView(ScreenStyles.button(this,"Configuración / modo"){openSettings()})
-        box.addView(ScreenStyles.button(this,"Diagnóstico"){openDiagnostics()});setContentView(box)
+        box.addView(ScreenStyles.button(this,"Diagnóstico"){startActivity(Intent(this,DiagnosticHomeActivity::class.java))});setContentView(box)
     }
     private fun showSignage(smart:Boolean){stopOverlay()
         requestedOrientation=if(manifest?.json?.optString("orientation")=="portrait")ActivityInfo.SCREEN_ORIENTATION_PORTRAIT else ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
@@ -177,20 +183,28 @@ class MainActivity : Activity() {
         if(smart){
             val label=ScreenStyles.label(this,"Cargando pantalla inteligente…",32f).apply{gravity=Gravity.CENTER;textAlignment=View.TEXT_ALIGNMENT_CENTER;setBackgroundColor(0xFF152845.toInt())}
             mode3Header=label
-            root.addView(label,FrameLayout.LayoutParams(-1,0).apply{height=(resources.displayMetrics.heightPixels*0.38f).toInt();gravity=Gravity.TOP})
+            root.addView(label,FrameLayout.LayoutParams(-1,0).apply{height=(resources.displayMetrics.heightPixels*settings.smartHeaderPct/100f).toInt();gravity=Gravity.TOP})
         }
         val media=FrameLayout(this).apply{setBackgroundColor(0xFF020609.toInt())}
-        val params=if(smart)FrameLayout.LayoutParams(-1,0).apply{height=(resources.displayMetrics.heightPixels*0.60f).toInt();gravity=Gravity.BOTTOM} else FrameLayout.LayoutParams(-1,-1)
+        val params=if(smart)FrameLayout.LayoutParams(-1,0).apply{height=(resources.displayMetrics.heightPixels*(100-settings.smartHeaderPct)/100f).toInt();gravity=Gravity.BOTTOM} else FrameLayout.LayoutParams(-1,-1)
         root.addView(media,params);stage=media;deck=MediaDeck(media,cache,settings.videoAudio)
         val hud=ScreenStyles.label(this,"Digital Signage",13f).apply{setBackgroundColor(0x990A1424.toInt());gravity=Gravity.END}
-        status=hud;root.addView(hud,FrameLayout.LayoutParams(-1,-2,Gravity.TOP))
-        hud.postDelayed({hud.visibility=View.GONE},10000)
+        status=hud
+        if(settings.signageShowHud && settings.signageHudSeconds>0){
+            root.addView(hud,FrameLayout.LayoutParams(-1,-2,Gravity.TOP))
+            hud.postDelayed({hud.visibility=View.GONE},settings.signageHudSeconds*1000L)
+        }
         setContentView(root)
         if(smart)drawLiveBoard()
         selectPlaylist()
     }
     private fun drawLiveBoard(){
-        val m=lastLive;val type=m.optString("widget_type","queue");val d=m.optJSONObject("payload")?:JSONObject()
+        val m=lastLive;val type=settings.smartApp;val d=m.optJSONObject("payload")?:JSONObject()
+        if(m.optString("widget_type",type)!=type){
+            mode3Header?.text=if(type=="queue")"SALA DE ESPERA\nEsperando turnos desde el portal"
+                else "MARCADOR\nEsperando puntos desde el portal"
+            return
+        }
         mode3Header?.text=if(type=="scoreboard"){
             "${d.optString("competition","PARTIDO")}\n${d.optString("home","LOCAL")}    ${d.optString("home_score","0")} : ${d.optString("away_score","0")}    ${d.optString("away","VISITANTE")}\n${d.optString("period","")}   ${d.optString("clock","")}".trim()
         }else{
@@ -253,11 +267,24 @@ class MainActivity : Activity() {
         if(System.currentTimeMillis()-lastSync>settings.syncMinutes*60000L)sync()
         if(System.currentTimeMillis()-lastControlPoll>=15000L)checkRemoteSync()
         checkAppUpdates()
-        if(activeMode==3&&System.currentTimeMillis()-lastLivePoll>30000L)pollLive()
+        if(activeMode==3&&System.currentTimeMillis()-lastLivePoll>settings.smartPollSec*1000L)pollLive()
     }
     private fun pollLive(){val secret=token.load()?:return;lastLivePoll=System.currentTimeMillis()
         worker.execute{try{val live=SignageApi(settings.portalUrl,secret).live().optJSONObject("live")?:return@execute
-            ui.post{lastLive=live;drawLiveBoard()}}catch(_:Exception){}}
+            ui.post{
+                if(settings.smartSound && settings.smartApp=="queue" && live.optString("widget_type")=="queue"){
+                    val seq=live.optJSONObject("payload")?.optLong("call_sequence",0L)?:0L
+                    if(lastCallSequence>=0 && seq>lastCallSequence){
+                        try{
+                            val tone=android.media.ToneGenerator(android.media.AudioManager.STREAM_NOTIFICATION,65)
+                            tone.startTone(android.media.ToneGenerator.TONE_PROP_BEEP,450)
+                            ui.postDelayed({try{tone.release()}catch(_:Exception){}},800)
+                        }catch(_:Exception){}
+                    }
+                    lastCallSequence=seq
+                }
+                lastLive=live;drawLiveBoard()
+            }}catch(_:Exception){}}
     }
     private fun checkRemoteSync() {
         val secret=token.load()?:return;lastControlPoll=System.currentTimeMillis()
@@ -292,7 +319,7 @@ class MainActivity : Activity() {
                 }
                 val model=ManifestModel(obj)
                 ui.post{manifest=model;lastLive=model.widget();syncInFlight=false;showMode();selectPlaylist();drawLiveBoard();status?.postDelayed({status?.visibility=View.GONE},3500)}
-                api.heartbeat(JSONObject().put("app_version","0.4.5").put("active_mode",model.activeMode(settings))
+                api.heartbeat(JSONObject().put("app_version","0.4.8").put("active_mode",model.activeMode(settings))
                  .put("cached_media",cache.countMedia()).put("free_storage_bytes",cache.freeBytes()).put("last_error",lastError.take(200)))
             }catch(e:Exception){lastError=e.message?:"Error de sincronización"
                 logs.record("error","sync",e.javaClass.simpleName,lastError)
@@ -303,6 +330,8 @@ class MainActivity : Activity() {
         box.addView(ScreenStyles.label(this,"Sin programación descargada",25f))
         box.addView(ScreenStyles.label(this,"Conecta el dispositivo a Internet para descargar la primera lista."))
         box.addView(ScreenStyles.button(this,"Reintentar"){sync()})
-        box.addView(ScreenStyles.button(this,"Configuración"){openSettings()});setContentView(box)
+        box.addView(ScreenStyles.button(this,"Configuración"){openSettings()})
+        box.addView(ScreenStyles.button(this,"Diagnóstico seguro"){startActivity(Intent(this,DiagnosticHomeActivity::class.java))})
+        setContentView(box)
     }
 }

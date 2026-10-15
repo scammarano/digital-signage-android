@@ -16,11 +16,11 @@
        <provider android:name=".ApkProvider" android:authorities="com.digitalsignage.tv.apkfile" android:exported="false" android:grantUriPermissions="true" />
        <activity android:name=".DiagnosticsActivity" android:exported="false" />
        <activity android:name=".SettingsActivity" android:exported="false" />
-       <activity android:name=".DiagnosticHomeActivity" android:exported="true">
+       <activity android:name=".DiagnosticHomeActivity" android:exported="false" />
+       <activity android:name=".MainActivity" android:exported="true" android:configChanges="orientation|screenSize">
            <intent-filter><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LAUNCHER" /><category android:name="android.intent.category.LEANBACK_LAUNCHER" /></intent-filter>
        </activity>
-       <activity android:name=".MainActivity" android:exported="false" android:configChanges="orientation|screenSize" />
-       <receiver android:name=".BootReceiver" android:exported="false" android:enabled="false">
+       <receiver android:name=".BootReceiver" android:exported="false" android:enabled="true">
            <intent-filter><action android:name="android.intent.action.BOOT_COMPLETED" /></intent-filter>
        </receiver>
        <service android:name=".LocalAdminService" android:exported="false" android:foregroundServiceType="dataSync" />

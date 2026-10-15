@@ -10,11 +10,7 @@ class BootReceiver : BroadcastReceiver() {
     override fun onReceive(context: Context, intent: Intent?) {
         if (intent?.action != Intent.ACTION_BOOT_COMPLETED) return
         val settings = SettingsStore(context)
-        if (!settings.autoStart || SecureToken(context).load() == null) return
-        if (AndroidCompat.canOverlay(context)) {
-            try { AndroidCompat.startServiceCompat(context, Intent(context, OverlayService::class.java)) }
-            catch (_: Exception) {}
-        }
+        if (!settings.autoStart || settings.diagnosticMode || SecureToken(context).load() == null) return
         try {
             context.startActivity(Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
         } catch (_: Exception) {}

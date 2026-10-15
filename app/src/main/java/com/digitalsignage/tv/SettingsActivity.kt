@@ -62,12 +62,46 @@ class SettingsActivity:Activity(){
                 }.setNegativeButton("Cancelar",null).show()
         })
         root.addView(ScreenStyles.label(this,"Modo principal remoto: "+arrayOf("","Cartelera","Overlay","Pantalla inteligente")[config.primaryMode],16f))
+        root.addView(ScreenStyles.button(this,"Abrir diagnóstico de soporte"){
+            startActivity(Intent(this,DiagnosticHomeActivity::class.java))
+        })
         root.addView(ScreenStyles.button(this,"Buscar actualización de APK ahora"){AppUpdater.check(this,config,true)})
         root.addView(ScreenStyles.button(this,"Instalar APK ya descargada"){AppUpdater.installCached(this)})
         root.addView(ScreenStyles.label(this,"Actualizaciones: "+when(config.updatePolicy){0->"Manual";1->"Avisar";else->"Descargar y confirmar"}+" · "+config.updateChannel,15f))
         root.addView(ScreenStyles.button(this,"Diagnóstico y logs locales"){
             startActivity(Intent(this,DiagnosticsActivity::class.java))
         })
+        root.addView(ScreenStyles.label(this,"CARTELERA",24f))
+        toggle("Mostrar información temporal sobre contenido",config.signageShowHud){config.signageShowHud=it}
+        field("Duración de información (0–60 seg)",config.signageHudSeconds.toString()){config.signageHudSeconds=it.toInt()}
+        root.addView(ScreenStyles.label(this,"OVERLAY (superposición)",24f))
+        fun select(title:String,current:String,options:List<Pair<String,String>>,save:(String)->Unit){
+            root.addView(ScreenStyles.button(this,"$title: "+(options.find{it.first==current}?.second?:current)){
+                val labels=options.map{it.second}.toTypedArray()
+                android.app.AlertDialog.Builder(this).setTitle(title)
+                    .setSingleChoiceItems(labels,options.indexOfFirst{it.first==current}){dialog,which->
+                        save(options[which].first);dialog.dismiss();showSettings()
+                    }.setNegativeButton("Cancelar",null).show()
+            })
+        }
+        select("Posición",config.overlayLayout,listOf(
+            "bottom" to "Franja inferior","top" to "Franja superior",
+            "left" to "Franja izquierda","right" to "Franja derecha",
+            "fullscreen" to "Pantalla completa temporal",
+            "half_horizontal" to "Media pantalla horizontal",
+            "half_vertical" to "Media pantalla vertical"
+        )){config.overlayLayout=it}
+        field("Intervalo Overlay (60–86400 seg)",config.overlayIntervalSec.toString()){config.overlayIntervalSec=it.toInt()}
+        field("Duración Overlay (3–120 seg)",config.overlayDurationSec.toString()){config.overlayDurationSec=it.toInt()}
+        field("Ancho franja Overlay (%)",config.overlayWidthPct.toString()){config.overlayWidthPct=it.toInt()}
+        field("Alto franja Overlay (%)",config.overlayHeightPct.toString()){config.overlayHeightPct=it.toInt()}
+        field("Opacidad Overlay (%)",config.overlayOpacity.toString()){config.overlayOpacity=it.toInt()}
+        root.addView(ScreenStyles.label(this,"PANTALLA INTELIGENTE",24f))
+        select("Aplicación",config.smartApp,listOf("queue" to "Sala de espera / Turnos","scoreboard" to "Marcador / Puntos")){config.smartApp=it}
+        field("Área superior inteligente (%)",config.smartHeaderPct.toString()){config.smartHeaderPct=it.toInt()}
+        field("Refrescar Turnos / Marcador (seg)",config.smartPollSec.toString()){config.smartPollSec=it.toInt()}
+        toggle("Aviso sonoro al llamar turno",config.smartSound){config.smartSound=it}
+        root.addView(ScreenStyles.label(this,"GENERAL",24f))
         toggle("Arrancar automáticamente cuando Android lo permita",config.autoStart){config.autoStart=it}
         toggle("Mostrar logo al iniciar la app",config.splash){config.splash=it}
         toggle("Mantener último contenido offline",config.offlinePlayback){config.offlinePlayback=it}

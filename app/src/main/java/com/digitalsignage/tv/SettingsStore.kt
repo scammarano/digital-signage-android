@@ -17,8 +17,39 @@ class SettingsStore(private val context: Context) {
         set(v) { require(v.startsWith("https://") && v.endsWith("/")); p.edit().putString("portal", v).apply() }
     /** Temporary safety lock: every network/playback stage requires a button press. */
     var diagnosticMode:Boolean
-        get()=p.getBoolean("diagnostic_manual_start",true)
+        get()=p.getBoolean("diagnostic_manual_start",false)
         set(value){p.edit().putBoolean("diagnostic_manual_start",value).commit()}
+    // One common schema is used by the portal, native settings and LAN panel.
+    var signageShowHud:Boolean
+        get()=p.getBoolean("signage_show_hud",true)
+        set(v)=p.edit().putBoolean("signage_show_hud",v).apply()
+    var signageHudSeconds:Int
+        get()=p.getInt("signage_hud_seconds",10).coerceIn(0,60)
+        set(v){require(v in 0..60);p.edit().putInt("signage_hud_seconds",v).apply()}
+    var overlayLayout:String
+        get()=p.getString("overlay_layout","bottom")?.takeIf{it in overlayLayouts}?:"bottom"
+        set(v){require(v in overlayLayouts);p.edit().putString("overlay_layout",v).apply()}
+    var overlayWidthPct:Int
+        get()=p.getInt("overlay_width_pct",30).coerceIn(15,100)
+        set(v){require(v in 15..100);p.edit().putInt("overlay_width_pct",v).apply()}
+    var overlayHeightPct:Int
+        get()=p.getInt("overlay_height_pct",25).coerceIn(10,100)
+        set(v){require(v in 10..100);p.edit().putInt("overlay_height_pct",v).apply()}
+    var overlayOpacity:Int
+        get()=p.getInt("overlay_opacity",90).coerceIn(40,100)
+        set(v){require(v in 40..100);p.edit().putInt("overlay_opacity",v).apply()}
+    var smartApp:String
+        get()=p.getString("smart_app","queue")?.takeIf{it=="queue"||it=="scoreboard"}?:"queue"
+        set(v){require(v=="queue"||v=="scoreboard");p.edit().putString("smart_app",v).apply()}
+    var smartHeaderPct:Int
+        get()=p.getInt("smart_header_pct",40).coerceIn(25,70)
+        set(v){require(v in 25..70);p.edit().putInt("smart_header_pct",v).apply()}
+    var smartPollSec:Int
+        get()=p.getInt("smart_poll_sec",10).coerceIn(5,120)
+        set(v){require(v in 5..120);p.edit().putInt("smart_poll_sec",v).apply()}
+    var smartSound:Boolean
+        get()=p.getBoolean("smart_sound",false)
+        set(v)=p.edit().putBoolean("smart_sound",v).apply()
     var autoStart: Boolean
         get() = p.getBoolean("auto_start", true)
         set(v) = p.edit().putBoolean("auto_start",v).apply()
@@ -85,6 +116,11 @@ class SettingsStore(private val context: Context) {
     }
     // Only allow-listed, non-secret options can be backed up or sent remotely.
     fun publicSnapshot():org.json.JSONObject = org.json.JSONObject().apply {
+        put("signage_show_hud",signageShowHud);put("signage_hud_seconds",signageHudSeconds)
+        put("overlay_layout",overlayLayout);put("overlay_width_pct",overlayWidthPct)
+        put("overlay_height_pct",overlayHeightPct);put("overlay_opacity",overlayOpacity)
+        put("smart_app",smartApp);put("smart_header_pct",smartHeaderPct)
+        put("smart_poll_sec",smartPollSec);put("smart_sound",smartSound)
         put("auto_start",autoStart);put("splash",splash);put("video_audio",videoAudio)
         put("offline_playback",offlinePlayback);put("enabled_modes",enabledModes)
         put("primary_mode",primaryMode);put("update_policy",updatePolicy);put("update_channel",updateChannel)
@@ -106,35 +142,64 @@ class SettingsStore(private val context: Context) {
     fun localAdminEnabled()=p.getBoolean("lan_admin_enabled",false)
     fun setLocalAdminEnabled(on:Boolean)=p.edit().putBoolean("lan_admin_enabled",on).commit()
     fun validateSettings(j:org.json.JSONObject):org.json.JSONObject {
-        val keys=setOf("auto_start","splash","video_audio","offline_playback","enabled_modes", "sync_minutes","cache_mb","external_cache","overlay_interval_sec","overlay_duration_sec","primary_mode","update_policy","update_channel")
-        val itr=j.keys();while(itr.hasNext())require(itr.next() in keys){"Parámetro no reconocido"}
-        fun boolean(k:String):Boolean{require(j.has(k) && j.get(k) is Boolean){"Tipo de $k inválido"};return j.getBoolean(k)}
-        fun integer(k:String,min:Int,max:Int):Int{require(j.has(k)&&j.get(k) is Int){"Tipo de $k inválido"};val v=j.getInt(k);require(v in min..max){"$k fuera de rango"};return v}
-        val out=org.json.JSONObject()
-        for(k in listOf("auto_start","splash","video_audio","offline_playback","external_cache"))out.put(k,boolean(k))
-        out.put("enabled_modes",integer("enabled_modes",1,7))
-        out.put("primary_mode",integer("primary_mode",1,3))
-        out.put("update_policy",integer("update_policy",0,2))
-        require(j.has("update_channel") && j.get("update_channel") is String){"Canal inválido"}
-        val channel=j.getString("update_channel")
-        require(channel in listOf("stable","beta","debug")){"Canal inválido"}
-        out.put("update_channel",channel)
-        require(out.getInt("enabled_modes") and (1 shl (out.getInt("primary_mode")-1))!=0){"Modo principal no habilitado"}
-        out.put("sync_minutes",integer("sync_minutes",1,60))
-        out.put("cache_mb",integer("cache_mb",128,16384))
-        out.put("overlay_interval_sec",integer("overlay_interval_sec",60,86400))
-        out.put("overlay_duration_sec",integer("overlay_duration_sec",3,120))
-        require(out.getInt("overlay_duration_sec")<out.getInt("overlay_interval_sec")){"Duración Overlay supera el intervalo"}
-        return out
+        val allowed=setOf("auto_start","splash","video_audio","offline_playback",
+            "enabled_modes","primary_mode","sync_minutes","cache_mb","external_cache",
+            "update_policy","update_channel","overlay_interval_sec","overlay_duration_sec",
+            "signage_show_hud","signage_hud_seconds","overlay_layout","overlay_width_pct",
+            "overlay_height_pct","overlay_opacity","smart_app","smart_header_pct",
+            "smart_poll_sec","smart_sound")
+        val cursor=j.keys()
+        while(cursor.hasNext())require(cursor.next() in allowed){"Parámetro desconocido"}
+        // Old backups/configs without new options get backward-compatible defaults.
+        val full=publicSnapshot()
+        val keys=j.keys()
+        while(keys.hasNext()){val key=keys.next();full.put(key,j.get(key))}
+        fun bool(k:String):Boolean {
+            require(full.get(k) is Boolean){"Tipo de $k inválido"}
+            return full.getBoolean(k)
+        }
+        fun number(k:String,low:Int,high:Int):Int {
+            require(full.get(k) is Int){"Tipo de $k inválido"}
+            return full.getInt(k).also{require(it in low..high){"$k fuera de rango"}}
+        }
+        val result=org.json.JSONObject()
+        for(k in listOf("auto_start","splash","video_audio","offline_playback",
+            "external_cache","signage_show_hud","smart_sound"))result.put(k,bool(k))
+        for((k,bounds) in mapOf(
+            "enabled_modes" to (1 to 7),"primary_mode" to (1 to 3),
+            "sync_minutes" to (1 to 60),"cache_mb" to (128 to 16384),
+            "update_policy" to (0 to 2),"overlay_interval_sec" to (60 to 86400),
+            "overlay_duration_sec" to (3 to 120),"signage_hud_seconds" to (0 to 60),
+            "overlay_width_pct" to (15 to 100),"overlay_height_pct" to (10 to 100),
+            "overlay_opacity" to (40 to 100),"smart_header_pct" to (25 to 70),
+            "smart_poll_sec" to (5 to 120)
+        ))result.put(k,number(k,bounds.first,bounds.second))
+        for((k,options) in mapOf(
+            "update_channel" to setOf("stable","beta","debug"),
+            "overlay_layout" to overlayLayouts,
+            "smart_app" to setOf("queue","scoreboard")
+        )){
+            require(full.get(k) is String && full.getString(k) in options){"Opción inválida para $k"}
+            result.put(k,full.getString(k))
+        }
+        require(result.getInt("enabled_modes") and (1 shl (result.getInt("primary_mode")-1))!=0){
+            "El modo principal debe estar habilitado"
+        }
+        require(result.getInt("overlay_duration_sec")<result.getInt("overlay_interval_sec")){
+            "La duración de Overlay debe ser menor que el intervalo"
+        }
+        return result
     }
     /** Single SharedPreferences.commit() makes config apply atomic at app level. Credentials/PIN stay untouched. */
     @Synchronized fun applySnapshot(snapshot:org.json.JSONObject,newRevision:Long?=null):Boolean {
         val v=validateSettings(snapshot)
         if(newRevision!=null)require(newRevision>=0)
         val e=p.edit()
-        for(k in listOf("auto_start","splash","video_audio","offline_playback","external_cache"))e.putBoolean(k,v.getBoolean(k))
-        for(k in listOf("enabled_modes","primary_mode","update_policy","sync_minutes","cache_mb","overlay_interval_sec","overlay_duration_sec"))e.putInt(k,v.getInt(k))
+        for(k in listOf("auto_start","splash","video_audio","offline_playback","external_cache","signage_show_hud","smart_sound"))e.putBoolean(k,v.getBoolean(k))
+        for(k in listOf("enabled_modes","primary_mode","update_policy","sync_minutes","cache_mb","overlay_interval_sec","overlay_duration_sec","signage_hud_seconds","overlay_width_pct","overlay_height_pct","overlay_opacity","smart_header_pct","smart_poll_sec"))e.putInt(k,v.getInt(k))
         e.putString("update_channel",v.getString("update_channel"))
+        e.putString("overlay_layout",v.getString("overlay_layout"))
+        e.putString("smart_app",v.getString("smart_app"))
         if(newRevision!=null)e.putLong("remote_revision",newRevision)
         return e.commit()
     }
@@ -146,5 +211,7 @@ class SettingsStore(private val context: Context) {
         dir.listFiles()?.sortedByDescending{it.lastModified()}?.drop(10)?.forEach{it.delete()}
         return f
     }
-    companion object { const val DEFAULT_PORTAL="https://www.2cam.services/digitaltv/portal/public/" }
+    companion object {
+        val overlayLayouts=setOf("bottom","top","left","right","fullscreen","half_horizontal","half_vertical")
+        const val DEFAULT_PORTAL="https://www.2cam.services/digitaltv/portal/public/" }
 }

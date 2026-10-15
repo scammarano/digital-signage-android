@@ -34,7 +34,7 @@ class DiagnosticHomeActivity:Activity() {
         logs=DeviceLogs(this)
         // Keep manual diagnostics on even when previous app settings were migrated.
         settings.diagnosticMode=true
-        logs.record("info","manual_launcher","Menú de diagnóstico iniciado","v0.4.7 API ${android.os.Build.VERSION.SDK_INT}")
+        logs.record("info","manual_launcher","Menú de diagnóstico iniciado","v0.4.8 API ${android.os.Build.VERSION.SDK_INT}")
         render()
     }
     override fun onDestroy(){worker.shutdownNow();super.onDestroy()}
@@ -93,7 +93,7 @@ class DiagnosticHomeActivity:Activity() {
     private fun render(){
         val root=ScreenStyles.column(this)
         root.addView(ScreenStyles.label(this,"2CAM DIGITAL SIGNAGE",28f))
-        root.addView(ScreenStyles.label(this,"v0.4.7 · MODO DIAGNÓSTICO MANUAL · Android API ${android.os.Build.VERSION.SDK_INT}",15f))
+        root.addView(ScreenStyles.label(this,"v0.4.8 · DIAGNÓSTICO DE SOPORTE MANUAL · Android API ${android.os.Build.VERSION.SDK_INT}",15f))
         val connected=key()!=null
         root.addView(ScreenStyles.label(this,if(connected)"Vinculación local: GUARDADA" else "Vinculación local: NO EXISTE",17f))
         root.addView(ScreenStyles.label(this,"No hay reproducción ni sincronización en segundo plano. Ejecuta cada botón en orden.",16f))
@@ -161,6 +161,11 @@ class DiagnosticHomeActivity:Activity() {
                 startActivity(Intent(this,MainActivity::class.java))
             }catch(e:Exception){status["player"]=2;detail="ERROR: Reproductor\n${e.message}";render()}
         }
+        root.addView(ScreenStyles.button(this,"Volver a arranque automático"){
+            settings.diagnosticMode=false
+            startActivity(Intent(this,MainActivity::class.java))
+            finish()
+        })
         root.addView(ScreenStyles.button(this,"Ver logs almacenados"){
             startActivity(Intent(this,DiagnosticsActivity::class.java))
         })

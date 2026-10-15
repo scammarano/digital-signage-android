@@ -49,20 +49,20 @@ class OverlayService:Service(){
                 try{val secret=SecureToken(this).load()?:return@execute;val api=SignageApi(settings.portalUrl,secret)
                     try{DeviceConfigSync(settings,api).poll()}catch(_:Exception){}
                     cache.sync(api,api.manifest()){};
-                    api.heartbeat(JSONObject().put("app_version","0.4.3").put("active_mode",2).put("cached_media",cache.countMedia()).put("free_storage_bytes",cache.freeBytes()))
+                    api.heartbeat(JSONObject().put("app_version","0.4.8").put("active_mode",2).put("cached_media",cache.countMedia()).put("free_storage_bytes",cache.freeBytes()))
                 }catch(_:Exception){}finally{syncing=false}
             }
         }
         if(current!=null){if(now>=hideAt)hide();return}
-        val remote=model.json.optJSONObject("device_options")
-        val interval=(remote?.optLong("overlay_interval_sec",900)?:900).coerceIn(60,86400)*1000
+        // The current APK configuration owns Overlay policy independently of playlist layout.
+        val interval=settings.overlayIntervalSec.toLong()*1000L
         if(nextAdAt==0L)nextAdAt=now+interval
         if(now<nextAdAt)return
         val all=model.entries();val images=ArrayList<JSONObject>()
         for(i in 0 until all.length()){val item=all.optJSONObject(i)?:continue;if(item.optString("mime").startsWith("image/"))images.add(item)}
         if(images.isEmpty()){nextAdAt=now+interval;return}
         val item=images[index%images.size];index++
-        val duration=(remote?.optLong("overlay_duration_sec",12)?:12).coerceIn(3,120)*1000
+        val duration=settings.overlayDurationSec.toLong()*1000L
         show(item);hideAt=now+duration;nextAdAt=now+interval
     }
     private fun show(item:JSONObject){
@@ -74,12 +74,25 @@ class OverlayService:Service(){
             val image=ImageView(this).apply{setImageBitmap(bitmap);scaleType=ImageView.ScaleType.FIT_CENTER}
             val frame=FrameLayout(this).apply{setBackgroundColor(0xDD0A1424.toInt());addView(image,FrameLayout.LayoutParams(-1,-1));alpha=0f}
             val screen=resources.displayMetrics;val width=screen.widthPixels;val height=screen.heightPixels
-            val layout=item.optString("layout","bottom")
-            val w=when(layout){"side","half_vertical"->(width*(if(layout=="side")0.27 else 0.5)).toInt();else->width}
-            val h=when(layout){"bottom"->(height*.22).toInt();"half_horizontal"->height/2;else->height}
-            val gravity=if(layout=="side"||layout=="half_vertical")Gravity.TOP or Gravity.RIGHT else Gravity.BOTTOM
+            val layout=settings.overlayLayout
+            val w=when(layout){
+                "left","right"->(width*settings.overlayWidthPct/100f).toInt()
+                "half_vertical"->width/2
+                else->width
+            }.coerceAtLeast(1)
+            val h=when(layout){
+                "bottom","top"->(height*settings.overlayHeightPct/100f).toInt()
+                "half_horizontal"->height/2
+                else->height
+            }.coerceAtLeast(1)
+            val gravity=when(layout){
+                "left"->Gravity.TOP or Gravity.LEFT
+                "right","half_vertical"->Gravity.TOP or Gravity.RIGHT
+                "top"->Gravity.TOP
+                else->Gravity.BOTTOM
+            }
             val attrs=WindowManager.LayoutParams(w,h,AndroidCompat.overlayWindowType,
-              WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,PixelFormat.TRANSLUCENT).apply{this.gravity=gravity;this.alpha=0.8f}
+              WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,PixelFormat.TRANSLUCENT).apply{this.gravity=gravity;this.alpha=settings.overlayOpacity/100f}
             wm?.addView(frame,attrs);current=frame;frame.animate().alpha(1f).setDuration(500).start()
         }catch(_:Exception){hide()}
     }
