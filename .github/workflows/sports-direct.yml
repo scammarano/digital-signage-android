@@ -27,6 +27,13 @@ jobs:
           path: ~/.android/debug.keystore
           key: digital-signage-sports-debug-v1
       - run: python3 scripts/create_icon.py
+      - name: Assert DEBUG HUD and runtime ACK are wired
+        run: |
+          grep -q 'DeviceDebugHud(this)' app/src/main/java/com/digitalsignage/tv/MainActivity.kt
+          grep -q 'refreshDebugHud()' app/src/main/java/com/digitalsignage/tv/MainActivity.kt
+          grep -q 'onShown:()->Unit' app/src/main/java/com/digitalsignage/tv/MediaDeck.kt
+          grep -q 'refreshDebugOverlay()' app/src/main/java/com/digitalsignage/tv/OverlayService.kt
+          grep -q 'config_$stage' app/src/main/java/com/digitalsignage/tv/DeviceDebug.kt
       - name: Test shared rules and build Fire APK
         run: gradle --no-daemon :sports-core:test :app:assembleDebug :app:assembleDebugAndroidTest --stacktrace
       - name: Verify signature and legacy compatibility
@@ -54,13 +61,13 @@ jobs:
       - name: Package Fire APK
         run: |
           mkdir delivery
-          cp app/build/outputs/apk/debug/app-debug.apk delivery/2cam-digital-signage-0.4.10-sports-direct-test.apk
-          cp SPORTS_DIRECTO.md delivery/LEEME.md
+          cp app/build/outputs/apk/debug/app-debug.apk delivery/2cam-digital-signage-0.4.11-debug-ack-sports.apk
+          cp DEBUG_ACK_LEEME.md delivery/LEEME.md
           cd delivery
           sha256sum *.apk > SHA256SUMS.txt
       - uses: actions/upload-artifact@v4
         with:
-          name: 2cam-fire-0.4.10-sports-direct-APK
+          name: 2cam-fire-0.4.11-debug-ack-sports-APK
           path: delivery/
           retention-days: 30
       - uses: actions/upload-artifact@v4

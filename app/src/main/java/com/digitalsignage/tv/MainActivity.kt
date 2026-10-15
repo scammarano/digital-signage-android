@@ -72,6 +72,14 @@ class MainActivity : Activity() {
     private var lastSmartApp=""
     private var lastSmartHeaderPct=0
     private var lastCallSequence=-1L
+    private val debugHud by lazy {DeviceDebugHud(this)}
+    private var lastSelectedMode=-1
+    private fun refreshDebugHud() {
+        if(!::settings.isInitialized)return
+        debugHud.update(settings.debugHudEnabled,
+            DeviceDebug.snapshot(this,settings,activeMode,lastSync,lastError,
+                "Medios: "+(if(::cache.isInitialized)cache.countMedia() else 0)))
+    }
     private val tick=object:Runnable{override fun run(){
         try{pulse()}catch(e:Throwable){
             try{logs.record("error","tick",e.javaClass.simpleName,e.message?:"")}catch(_:Throwable){}
@@ -109,8 +117,8 @@ class MainActivity : Activity() {
             ui.postDelayed(tick,1000)
         }
     }
-    override fun onDestroy(){ui.removeCallbacks(tick);deck?.clear();worker.shutdownNow();super.onDestroy()}
-    override fun onResume(){super.onResume();if(::settings.isInitialized && !recoveryMode && !settings.diagnosticMode && !startingSplash && token.load()!=null){lastSync=0L;sync();}}
+    override fun onDestroy(){ui.removeCallbacks(tick);debugHud.clear();deck?.clear();worker.shutdownNow();super.onDestroy()}
+    override fun onResume(){super.onResume();refreshDebugHud();if(::settings.isInitialized && !recoveryMode && !settings.diagnosticMode && !startingSplash && token.load()!=null){lastSync=0L;sync();}}
     override fun onKeyDown(keyCode:Int,event:KeyEvent?):Boolean {
         if(keyCode==KeyEvent.KEYCODE_MENU || (keyCode==KeyEvent.KEYCODE_DPAD_CENTER && (event?.isLongPress==true))){openSettings();return true}
         return super.onKeyDown(keyCode,event)
@@ -183,6 +191,15 @@ class MainActivity : Activity() {
         if(mode==3){lastSmartApp=settings.smartApp;lastSmartHeaderPct=settings.smartHeaderPct}
         activeMode=mode;playlistIdentity="";deck?.clear();deck=null;stage=null;mode3Header=null
         when(mode){1->showSignage(false);2->showOverlayControl();3->showSignage(true);else->showDisabled()}
+        if(mode!=lastSelectedMode){
+            DeviceDebug.record(this,logs,"started",settings.remoteRevision,
+                "Solicitado modo "+DeviceDebug.mode(mode))
+            lastSelectedMode=mode
+        }
+        if(mode==2 && !AndroidCompat.canOverlay(this))
+            DeviceDebug.record(this,logs,"blocked",settings.remoteRevision,
+                "Permiso de Overlay no concedido por Fire OS")
+        refreshDebugHud()
     }
     private fun showConnecting(){
         val box=ScreenStyles.column(this)
@@ -232,6 +249,11 @@ class MainActivity : Activity() {
         }else{
             "${d.optString("title","SALA DE ESPERA")}\nTURNO  ${d.optString("ticket","--")}\nPUESTO ${d.optString("counter","--")}\n${d.optString("message","")}".trim()
         }
+        if(activeMode==3 && (DeviceDebug.effective(this)!=settings.remoteRevision ||
+            DeviceDebug.effectiveMode(this)!=3)){
+            DeviceDebug.record(this,logs,"effective",settings.remoteRevision,
+                "Panel inteligente ${settings.smartApp} mostrado",3)
+        }
     }
     private fun showOverlayControl(){
         val box=ScreenStyles.column(this)
@@ -273,12 +295,20 @@ class MainActivity : Activity() {
         try{deck?.display(item,{advance()},{message->
             lastError=message;logs.record("error","media",message)
             status?.apply{visibility=View.VISIBLE;text=message};ui.postDelayed({advance()},2500)
+        },{
+            if(DeviceDebug.effective(this)!=settings.remoteRevision ||
+                DeviceDebug.effectiveMode(this)!=activeMode){
+                DeviceDebug.record(this,logs,"effective",settings.remoteRevision,
+                    "Medio renderizado en "+DeviceDebug.mode(activeMode),activeMode)
+            }
+            refreshDebugHud()
         })}catch(e:Exception) {
             logs.record("error","advance",e.javaClass.simpleName,e.message?:"")
             ui.postDelayed({advance()},2500)
         }
     }
     private fun pulse(){
+        refreshDebugHud()
         pollDebugConfig()
         if(settings.diagnosticMode)return
         if(token.load()==null)return
@@ -328,7 +358,16 @@ class MainActivity : Activity() {
                 try{logs.upload(api)}catch(e:Exception){logs.record("warn","logs_upload",e.javaClass.simpleName,e.message?:"")}
                 // Apply remote settings first; the player then uses the new preferences.
                 // If the remote config endpoint is temporarily unavailable, preserve cached playback.
-                try{DeviceConfigSync(settings,api).poll()}catch(e:Exception){lastError="Configuración remota: ${e.message}"}
+                try {
+                    DeviceConfigSync(settings,api){stage,rev,detail->
+                        DeviceDebug.record(this,logs,stage,rev,detail)
+                    }.poll()
+                    try{logs.upload(api)}catch(_:Exception){}
+                }catch(e:Exception){
+                    lastError="Configuración remota: ${e.message}"
+                    logs.record("error","config_sync",e.javaClass.simpleName,lastError)
+                    try{logs.upload(api)}catch(_:Exception){}
+                }
                 val obj=api.manifest()
                 logs.record("info","manifest","Programación recibida","schema=${obj.optInt("schema_version")}; device=${obj.optInt("device_id")}")
                 cache.sync(api,obj){msg->ui.post{status?.apply{visibility=View.VISIBLE;text=msg}}}

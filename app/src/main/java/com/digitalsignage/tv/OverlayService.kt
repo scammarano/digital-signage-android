@@ -30,6 +30,29 @@ class OverlayService:Service(){
     private var wm:WindowManager?=null;private var current:View?=null;private var nextAdAt=0L;private var hideAt=0L
     private var lastFetch=0L;private var index=0;private var syncing=false
     private var lastDebugConfigPoll=0L
+    private var debugText:TextView?=null
+    private fun refreshDebugOverlay() {
+        val manager=wm?:return
+        if(!settings.debugHudEnabled || !AndroidCompat.canOverlay(this)) {
+            debugText?.let{try{manager.removeView(it)}catch(_:Exception){}}
+            debugText=null
+            return
+        }
+        val label=debugText ?: TextView(this).apply{
+            textSize=13f
+            setTextColor(android.graphics.Color.WHITE)
+            setPadding(10,8,10,8)
+            setBackgroundColor(0xDB06213B.toInt())
+        }.also{
+            val lp=WindowManager.LayoutParams(-1,-2,AndroidCompat.overlayWindowType,
+                WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or
+                WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or
+                WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,
+                PixelFormat.TRANSLUCENT).apply{gravity=Gravity.TOP}
+            try{manager.addView(it,lp);debugText=it}catch(_:Exception){}
+        }
+        label.text=DeviceDebug.snapshot(this,settings,2,lastFetch,"","Overlay en segundo plano")
+    }
     private fun pollDebugConfig(){
         if(!settings.debugHudEnabled)return
         val now=System.currentTimeMillis()
@@ -55,8 +78,12 @@ class OverlayService:Service(){
     }
     override fun onBind(intent:Intent?):IBinder?=null
     override fun onStartCommand(intent:Intent?,flags:Int,startId:Int):Int=START_STICKY
-    override fun onDestroy(){handler.removeCallbacks(ticker);hide();worker.shutdownNow();super.onDestroy()}
+    override fun onDestroy(){handler.removeCallbacks(ticker);hide();
+        debugText?.let{try{wm?.removeView(it)}catch(_:Exception){}}
+        debugText=null
+        worker.shutdownNow();super.onDestroy()}
     private fun pulse(){
+        refreshDebugOverlay()
         pollDebugConfig()
         if(!AndroidCompat.canOverlay(this)){hide();stopSelf();return}
         val model=cache.active()?.let{ManifestModel(it)}?:return
@@ -65,7 +92,12 @@ class OverlayService:Service(){
         if(now-lastFetch>settings.syncMinutes*60000L&&!syncing){syncing=true;lastFetch=now
             worker.execute{
                 try{val secret=SecureToken(this).load()?:return@execute;val api=SignageApi(settings.portalUrl,secret)
-                    try{DeviceConfigSync(settings,api).poll()}catch(_:Exception){}
+                    try{
+                        DeviceConfigSync(settings,api){step,rev,detail->
+                            DeviceDebug.record(this,DeviceLogs(this),step,rev,detail)
+                        }.poll()
+                        try{DeviceLogs(this).upload(api)}catch(_:Exception){}
+                    }catch(_:Exception){}
                     cache.sync(api,api.manifest()){};
                     api.heartbeat(JSONObject().put("app_version","0.4.8").put("active_mode",2).put("cached_media",cache.countMedia()).put("free_storage_bytes",cache.freeBytes()))
                 }catch(_:Exception){}finally{syncing=false}
@@ -111,7 +143,13 @@ class OverlayService:Service(){
             }
             val attrs=WindowManager.LayoutParams(w,h,AndroidCompat.overlayWindowType,
               WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,PixelFormat.TRANSLUCENT).apply{this.gravity=gravity;this.alpha=settings.overlayOpacity/100f}
-            wm?.addView(frame,attrs);current=frame;frame.animate().alpha(1f).setDuration(500).start()
+            val manager=wm?:return
+            manager.addView(frame,attrs);current=frame;frame.animate().alpha(1f).setDuration(500).start()
+            if(DeviceDebug.effective(this)!=settings.remoteRevision ||
+               DeviceDebug.effectiveMode(this)!=2){
+                DeviceDebug.record(this,DeviceLogs(this),"effective",settings.remoteRevision,
+                    "Publicidad Overlay mostrada en pantalla",2)
+            }
         }catch(_:Exception){hide()}
     }
     private fun hide(){current?.let{try{wm?.removeView(it)}catch(_:Exception){}};current=null}

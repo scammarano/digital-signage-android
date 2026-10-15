@@ -35,7 +35,7 @@ class MediaDeck(private val stage:FrameLayout,private val cache:CacheManager,pri
           else->FrameLayout.LayoutParams(-1,-1)
         }
     }
-    fun display(item:JSONObject,onComplete:()->Unit,onError:(String)->Unit){
+    fun display(item:JSONObject,onComplete:()->Unit,onError:(String)->Unit,onShown:()->Unit={}){
         val stamp=++serial
         pendingTimer?.let{main.removeCallbacks(it)};pendingTimer=null
         val sha=item.optString("sha256");val media=cache.mediaFile(sha)
@@ -50,7 +50,7 @@ class MediaDeck(private val stage:FrameLayout,private val cache:CacheManager,pri
             video.setOnPreparedListener{mp->
                 if(stamp!=serial){video.stopPlayback();return@setOnPreparedListener}
                 mp.isLooping=false;try{mp.setVolume(if(playAudio)1f else 0f,if(playAudio)1f else 0f)}catch(_:Exception){}
-                switchTo(box,parms,item,video);video.start()
+                switchTo(box,parms,item,video);video.start();onShown()
                 video.setOnCompletionListener{if(stamp==serial)onComplete()}
             }
             video.setVideoURI(Uri.fromFile(media))
@@ -65,7 +65,7 @@ class MediaDeck(private val stage:FrameLayout,private val cache:CacheManager,pri
                     main.post{
                         if(stamp!=serial){bitmap.recycle();return@post}
                         val image=ImageView(stage.context).apply{scaleType=ImageView.ScaleType.FIT_CENTER;setImageBitmap(bitmap)}
-                        box.addView(image,FrameLayout.LayoutParams(-1,-1));switchTo(box,parms,item,null)
+                        box.addView(image,FrameLayout.LayoutParams(-1,-1));switchTo(box,parms,item,null);onShown()
                         pendingTimer=Runnable{if(stamp==serial)onComplete()}
                         main.postDelayed(pendingTimer!!,item.optLong("duration",10).coerceIn(1,3600)*1000)
                     }

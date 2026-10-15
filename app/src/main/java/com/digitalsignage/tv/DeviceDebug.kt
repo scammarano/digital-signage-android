@@ -22,10 +22,11 @@ object DeviceDebug {
     fun received(c:Context)=prefs(c).getLong("received_revision",0L)
     fun applied(c:Context)=prefs(c).getLong("applied_revision",0L)
     fun effective(c:Context)=prefs(c).getLong("effective_revision",0L)
+    fun effectiveMode(c:Context)=prefs(c).getInt("effective_mode",0)
     fun lastEvent(c:Context)=prefs(c).getString("event","Sin eventos")?:"Sin eventos"
     fun mode(mode:Int):String=when(mode){1->"CARTELERA";2->"OVERLAY";3->"PANTALLA INTELIGENTE";else->"SIN MODO"}
-    fun record(c:Context,logs:DeviceLogs,stage:String,revision:Long,detail:String=""){
-        val tag=when(stage){"received"->"RECIBIDO";"applied"->"GUARDADO";"reported"->"CONFIRMADO EN PORTAL";
+    fun record(c:Context,logs:DeviceLogs,stage:String,revision:Long,detail:String="",runtimeMode:Int=0){
+        val tag=when(stage){"received"->"RECIBIDO";"applied"->"GUARDADO";"reported"->"CONFIRMADO EN PORTAL";"started"->"MODO SELECCIONADO";
             "effective"->"EN EJECUCIÓN";"blocked"->"NO OPERATIVO";"rejected"->"RECHAZADO";else->stage.uppercase(Locale.US)}
         val text="$tag · config r$revision ${detail.take(150)}".trim()
         val previous=lastEvent(c)
@@ -33,7 +34,10 @@ object DeviceDebug {
         when(stage){
             "received"->e.putLong("received_revision",revision)
             "applied"->e.putLong("applied_revision",revision)
-            "effective"->e.putLong("effective_revision",revision)
+            "effective"->{
+                e.putLong("effective_revision",revision)
+                if(runtimeMode in 1..3)e.putInt("effective_mode",runtimeMode)
+            }
         }
         e.apply()
         if(text!=previous) {
@@ -52,7 +56,7 @@ object DeviceDebug {
         val module=if(mode==3)when(settings.smartApp){"queue"->"TURNOS";else->"SPORTS"} else "--"
         return "2Cam Digital Signage · APK 0.4.11 DEBUG · API ${android.os.Build.VERSION.SDK_INT}\n" +
             "Modo: ${mode(mode)} · Origen: $origin · Módulo: $module\n" +
-            "Revisión: recibida r${received(c)} / guardada r${applied(c)} / efectiva r${effective(c)}\n" +
+            "Revisión: recibida r${received(c)} / guardada r${applied(c)} / efectiva r${effective(c)} (${mode(effectiveMode(c))})\n" +
             "Últ. sync $sync · $eventAt: ${lastEvent(c)}" +
             (if(lastError.isBlank())"" else "\nERROR: ${lastError.take(120)}") +
             (if(extra.isBlank())"" else "\n${extra.take(120)}")
