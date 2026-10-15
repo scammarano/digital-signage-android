@@ -28,6 +28,12 @@ jobs:
           gradle-version: '8.9'
       - name: Generate 2Cam launcher icon (PNG, Android 4.4 safe)
         run: python3 scripts/create_icon.py
+      - name: Verify legacy network compatibility
+        run: |
+          if grep -R -n -F '.contentLengthLong' app/src/main/java || grep -R -n -F '.getContentLengthLong(' app/src/main/java; then
+            echo "::error::API 24 contentLengthLong cannot be used on API 19-22 devices."
+            exit 1
+          fi
       - name: Compile APK
         run: gradle --no-daemon --stacktrace assembleDebug
       - name: Verify signed APK and Android 4.4 compatibility
@@ -43,7 +49,7 @@ jobs:
       - name: Upload signed development build artifact
         uses: actions/upload-artifact@v4
         with:
-          name: DigitalSignage-TV-v0.4.5-API19-mode-updater-debug
+          name: 2Cam-Digital-Signage-v0.4.7-FireOS5-CacheFix
           path: |
             app/build/outputs/apk/debug/app-debug.apk
             app/build/outputs/apk/debug/apk-metadata.txt

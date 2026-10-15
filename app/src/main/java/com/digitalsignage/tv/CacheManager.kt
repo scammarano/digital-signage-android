@@ -43,7 +43,8 @@ class CacheManager(private val context:Context,private val settings:SettingsStor
                 val conn=api.mediaConnection(item.getString("url"))
                 try {
                     if(conn.responseCode!=200)throw IllegalStateException("Descarga HTTP ${conn.responseCode}")
-                    val length=conn.contentLengthLong
+                    // getContentLengthLong() is API 24+ on Android: avoid NoSuchMethodError on Fire OS 5 (API 22).
+                    val length=conn.getHeaderField("Content-Length")?.trim()?.toLongOrNull() ?: -1L
                     if(length>size)throw IllegalStateException("Tamaño HTTP inesperado")
                     val digest=MessageDigest.getInstance("SHA-256");var count=0L
                     conn.inputStream.use{src->FileOutputStream(tmp).use{dst->
