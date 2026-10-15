@@ -114,7 +114,6 @@ class LocalAdminServer(private val context:Context,private val settings:Settings
         if(method=="GET"&&path=="/") {
             val snap=settings.publicSnapshot()
             val csrf=sha(sessionHash+"ds-lan-csrf")
-            val opts=StringBuilder()
             fun select(name:String,label:String,selected:String,choices:List<Pair<String,String>>):String {
                 return "<label>${html(label)}<select name='$name'>"+
                   choices.joinToString("") { (key,text) ->
@@ -136,7 +135,11 @@ class LocalAdminServer(private val context:Context,private val settings:Settings
             check("external_cache","Caché externa privada")
             num("sync_minutes","Sincronización (minutos)",1,60)
             num("cache_mb","Límite caché (MB)",128,16384)
-            num("enabled_modes","Máscara de modos habilitados (1 Cartelera + 2 Overlay + 4 Inteligente)",1,7)
+            opts.append("<h4>Modos habilitados</h4>")
+            for((bit,title) in listOf(1 to "Cartelera",2 to "Overlay",4 to "Pantalla inteligente")){
+                val checked=(snap.optInt("enabled_modes",7) and bit)!=0
+                opts.append("<label><input type=checkbox name='mode_$bit' value='1' ${if(checked)"checked" else ""}>${html(title)}</label>")
+            }
             opts.append(select("primary_mode","Modo principal",snap.optInt("primary_mode",1).toString(),
                 listOf("1" to "Cartelera","2" to "Overlay","3" to "Pantalla inteligente")))
             section("Cartelera")
@@ -179,7 +182,10 @@ class LocalAdminServer(private val context:Context,private val settings:Settings
                 val o=JSONObject()
                 for(k in listOf("auto_start","splash","video_audio","offline_playback",
                     "external_cache","signage_show_hud","smart_sound"))o.put(k,params[k]=="1")
-                for(k in listOf("enabled_modes","primary_mode","update_policy","sync_minutes",
+                var modes=0
+                for(bit in listOf(1,2,4))if(params["mode_$bit"]=="1")modes=modes or bit
+                o.put("enabled_modes",modes)
+                for(k in listOf("primary_mode","update_policy","sync_minutes",
                     "cache_mb","overlay_interval_sec","overlay_duration_sec","signage_hud_seconds",
                     "overlay_width_pct","overlay_height_pct","overlay_opacity","smart_header_pct",
                     "smart_poll_sec"))o.put(k,params[k]?.toIntOrNull()?:-1)
@@ -199,7 +205,7 @@ class LocalAdminServer(private val context:Context,private val settings:Settings
         respond(c,404,"Ruta no encontrada")
       }catch(e:Exception){try{respond(c,400,"Solicitud inválida: ${e.javaClass.simpleName}")}catch(_:Exception){} }
     }}
-    private fun page(content:String)="""<!doctype html><html lang='es'><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'><title>2Cam Digital Signage · Local</title><style>body{font:16px system-ui;background:#ecf1f7;color:#14243b;margin:0;padding:30px}main{max-width:740px;margin:auto;background:white;padding:24px;border-radius:12px;box-shadow:0 8px 30px #0002}label{display:block;margin:12px 0}input,textarea{padding:10px;border:1px solid #cbd5e1;border-radius:6px;max-width:100%;box-sizing:border-box}textarea{width:100%}button{background:#174589;color:white;border:0;padding:10px 18px;border-radius:6px;cursor:pointer;margin:12px 0}form{border-bottom:1px solid #ddd;margin-bottom:20px}a{color:#174589}</style></head><body><main>$content</main></body></html>"""
+    private fun page(content:String)="""<!doctype html><html lang='es'><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'><title>2Cam Digital Signage · Local</title><style>body{font:16px system-ui;background:#ecf1f7;color:#14243b;margin:0;padding:30px}main{max-width:740px;margin:auto;background:white;padding:24px;border-radius:12px;box-shadow:0 8px 30px #0002}label{display:block;margin:12px 0}input,textarea{padding:10px;border:1px solid #cbd5e1;border-radius:6px;max-width:100%;box-sizing:border-box}textarea{width:100%}input[type=checkbox]{accent-color:#07833c}select{padding:10px;border:1px solid #cbd5e1;border-radius:6px}button{background:#174589;color:white;border:0;padding:10px 18px;border-radius:6px;cursor:pointer;margin:12px 0}form{border-bottom:1px solid #ddd;margin-bottom:20px}a{color:#174589}</style></head><body><main>$content</main></body></html>"""
     private fun respond(c:Socket,status:Int,body:String,extra:String="",type:String="text/plain; charset=utf-8") {
         val bytes=body.toByteArray(Charsets.UTF_8)
         val out=BufferedOutputStream(c.getOutputStream())
