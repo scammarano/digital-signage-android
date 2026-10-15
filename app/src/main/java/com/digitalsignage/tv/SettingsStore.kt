@@ -31,8 +31,14 @@ class SettingsStore(private val context: Context) {
         get() = p.getInt("enabled_modes",7) and 7
         set(v) = p.edit().putInt("enabled_modes",v and 7).apply()
     var syncMinutes: Int
-        get() = p.getInt("sync_minutes",5).coerceIn(1,60)
+        get() = p.getInt("sync_minutes",1).coerceIn(1,60)
         set(v) = p.edit().putInt("sync_minutes",v.coerceIn(1,60)).apply()
+    var lastControlVersion:Long
+        get()=p.getLong("control_applied",0L)
+        set(value) {p.edit().putLong("control_applied",value).commit()}
+    var manualMode:Int
+        get()=p.getInt("manual_mode",0).coerceIn(0,3)
+        set(value){require(value in 0..3);p.edit().putInt("manual_mode",value).commit()}
     var cacheMb: Int
         get() = p.getInt("cache_mb",if(Build.VERSION.SDK_INT <= 20) 128 else 256).coerceIn(128,16384)
         set(v) = p.edit().putInt("cache_mb",v.coerceIn(128,16384)).apply()

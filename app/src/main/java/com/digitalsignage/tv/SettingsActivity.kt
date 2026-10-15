@@ -44,6 +44,18 @@ class SettingsActivity:Activity(){
         root.addView(ScreenStyles.label(this,"DIGITAL SIGNAGE · CONFIGURACIÓN",28f))
         root.addView(ScreenStyles.label(this,"Ajustes de este equipo, no modifican otras pantallas",16f))
         root.addView(ScreenStyles.label(this,"Android ${android.os.Build.VERSION.RELEASE} (API ${android.os.Build.VERSION.SDK_INT}) · ${LegacyProfile.description()}",14f))
+        root.addView(ScreenStyles.button(this,"Seleccionar modo local (para pruebas)"){
+            val choices=arrayOf("Automático (según portal y horarios)","Cartelera","Overlay","Pantalla inteligente")
+            AlertDialog.Builder(this).setTitle("Modo principal")
+                .setSingleChoiceItems(choices,config.manualMode){dialog,selected->
+                    config.manualMode=selected;dialog.dismiss()
+                    AlertDialog.Builder(this).setMessage("Modo guardado. Vuelve al reproductor para aplicarlo.")
+                        .setPositiveButton("Aceptar",null).show()
+                }.setNegativeButton("Cancelar",null).show()
+        })
+        root.addView(ScreenStyles.button(this,"Diagnóstico y logs locales"){
+            startActivity(Intent(this,DiagnosticsActivity::class.java))
+        })
         toggle("Arrancar automáticamente cuando Android lo permita",config.autoStart){config.autoStart=it}
         toggle("Mostrar logo al iniciar la app",config.splash){config.splash=it}
         toggle("Mantener último contenido offline",config.offlinePlayback){config.offlinePlayback=it}

@@ -42,13 +42,27 @@ class MainActivity : Activity() {
     private var lastSync=0L
     private var lastLivePoll=0L
     private var lastError=""
+    private lateinit var logs:DeviceLogs
+    private var lastControlPoll=0L
+    private var remoteControlRevision=0L
     private var syncInFlight=false
     private var lastLive=JSONObject()
     private var mode3Header:TextView?=null
-    private val tick=object:Runnable{override fun run(){try{pulse()}finally{ui.postDelayed(this,5000)}}}
+    private val tick=object:Runnable{override fun run(){
+        try{pulse()}catch(e:Throwable){
+            try{logs.record("error","tick",e.javaClass.simpleName,e.message?:"")}catch(_:Throwable){}
+            showRecoveryError("Error del reproductor: ${e.message}")
+        }finally{ui.postDelayed(this,5000)}
+    }}
     override fun onCreate(savedInstanceState:Bundle?){super.onCreate(savedInstanceState)
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-        settings=SettingsStore(this);token=SecureToken(this);cache=CacheManager(this,settings)
+        settings=SettingsStore(this);token=SecureToken(this);cache=CacheManager(this,settings);logs=DeviceLogs(this)
+        logs.record("info","activity","Reproductor iniciado")
+        if(logs.recentCrash()) {
+            showRecoveryError("Se detectó un cierre inesperado. Los logs quedaron guardados para enviarlos al portal.")
+            worker.execute {try{token.load()?.let{logs.upload(SignageApi(settings.portalUrl,it))}}catch(_:Exception){}}
+            return
+        }
         reloadFromDisk()
         if(settings.splash){
             startingSplash=true
@@ -69,6 +83,28 @@ class MainActivity : Activity() {
         return super.onKeyDown(keyCode,event)
     }
     private fun openSettings(){startActivity(Intent(this,SettingsActivity::class.java))}
+    private fun openDiagnostics(){startActivity(Intent(this,DiagnosticsActivity::class.java))}
+    private fun showRecoveryError(message:String) {
+        val box=ScreenStyles.column(this)
+        box.addView(ScreenStyles.label(this,"DIGITAL SIGNAGE · RECUPERACIÓN",25f))
+        box.addView(ScreenStyles.label(this,message,16f))
+        box.addView(ScreenStyles.button(this,"Enviar logs y sincronizar ahora"){
+            logs.acknowledgeCrash();sync();showConnectingSafe()
+        })
+        box.addView(ScreenStyles.button(this,"Ver diagnóstico") {openDiagnostics()})
+        box.addView(ScreenStyles.button(this,"Configuración / modo") {openSettings()})
+        setContentView(android.widget.ScrollView(this).apply{addView(box)})
+    }
+    private fun showConnectingSafe(){
+        if(token.load()==null)showPairing()
+        else {
+            val box=ScreenStyles.column(this)
+            box.addView(ScreenStyles.label(this,"Sincronizando...",25f))
+            box.addView(ScreenStyles.button(this,"Configuración") {openSettings()})
+            box.addView(ScreenStyles.button(this,"Diagnóstico") {openDiagnostics()})
+            setContentView(box)
+        }
+    }
     private fun reloadFromDisk(){manifest=cache.active()?.let{ManifestModel(it)};lastLive=manifest?.widget()?:JSONObject()}
     private fun showPairing(){activeMode=-1;stopOverlay();deck?.clear();deck=null
         val box=ScreenStyles.column(this)
@@ -82,8 +118,14 @@ class MainActivity : Activity() {
             val entered=code.text.toString().trim();if(!Regex("[0-9]{6}").matches(entered)){line.text="El código debe contener 6 dígitos";return@button}
             line.text="Vinculando…"
             worker.execute{
-              try{val r=SignageApi(settings.portalUrl,null).pair(entered);token.save(r.getString("token"));ui.post{line.text="Vinculado";showMode();sync()}}
-              catch(e:Exception){ui.post{line.text="Error: ${e.message}"}}
+                try {
+                    logs.record("info","pairing","Intentando vinculación")
+                    val reply=SignageApi(settings.portalUrl,null).pair(entered)
+                    token.save(reply.getString("token"))
+                    logs.record("info","pairing","Vinculación guardada","device_id=${reply.optInt("device_id")}")
+                    ui.post { line.text="Vinculado. Sincronizando...";showMode();sync() }
+                }catch(e:Exception){logs.record("error","pairing",e.javaClass.simpleName,e.message?:"")
+                    ui.post { line.text="Error: ${e.message}" }}
             }
         })
         box.addView(ScreenStyles.button(this,"Configuración local (PIN)"){openSettings()})
@@ -102,12 +144,15 @@ class MainActivity : Activity() {
         box.addView(ScreenStyles.label(this,"Digital Signage · Sincronizando programación",25f))
         box.addView(ScreenStyles.label(this,"Conservará el último contenido completo cuando no haya Internet."))
         box.addView(ScreenStyles.button(this,"Sincronizar ahora"){sync()})
-        box.addView(ScreenStyles.button(this,"Configuración"){openSettings()})
+        box.addView(ScreenStyles.label(this,"Modo: configurado desde el portal o desde Ajustes locales.",15f))
+        box.addView(ScreenStyles.button(this,"Configuración / elegir modo"){openSettings()})
+        box.addView(ScreenStyles.button(this,"Diagnóstico y logs"){openDiagnostics()})
         setContentView(box);sync()
     }
     private fun showDisabled(){stopOverlay();val box=ScreenStyles.column(this)
         box.addView(ScreenStyles.label(this,"Pantalla en mantenimiento",26f))
-        box.addView(ScreenStyles.button(this,"Configuración"){openSettings()});setContentView(box)
+        box.addView(ScreenStyles.button(this,"Configuración / modo"){openSettings()})
+        box.addView(ScreenStyles.button(this,"Diagnóstico"){openDiagnostics()});setContentView(box)
     }
     private fun showSignage(smart:Boolean){stopOverlay()
         requestedOrientation=if(manifest?.json?.optString("orientation")=="portrait")ActivityInfo.SCREEN_ORIENTATION_PORTRAIT else ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
@@ -172,7 +217,13 @@ class MainActivity : Activity() {
         if(entries.length()==0)return
         val item=entries.optJSONObject(index%entries.length())?:return
         index=(index+1)%entries.length()
-        deck?.display(item,{advance()},{message->lastError=message;status?.apply{visibility=View.VISIBLE;text=message};ui.postDelayed({advance()},2500)})
+        try{deck?.display(item,{advance()},{message->
+            lastError=message;logs.record("error","media",message)
+            status?.apply{visibility=View.VISIBLE;text=message};ui.postDelayed({advance()},2500)
+        })}catch(e:Exception) {
+            logs.record("error","advance",e.javaClass.simpleName,e.message?:"")
+            ui.postDelayed({advance()},2500)
+        }
     }
     private fun pulse(){
         if(token.load()==null)return
@@ -182,26 +233,51 @@ class MainActivity : Activity() {
             if(nextMode!=activeMode)showMode() else if(activeMode==1||activeMode==3)selectPlaylist()
         }
         if(System.currentTimeMillis()-lastSync>settings.syncMinutes*60000L)sync()
+        if(System.currentTimeMillis()-lastControlPoll>=15000L)checkRemoteSync()
         if(activeMode==3&&System.currentTimeMillis()-lastLivePoll>30000L)pollLive()
     }
     private fun pollLive(){val secret=token.load()?:return;lastLivePoll=System.currentTimeMillis()
         worker.execute{try{val live=SignageApi(settings.portalUrl,secret).live().optJSONObject("live")?:return@execute
             ui.post{lastLive=live;drawLiveBoard()}}catch(_:Exception){}}
     }
+    private fun checkRemoteSync() {
+        val secret=token.load()?:return;lastControlPoll=System.currentTimeMillis()
+        worker.execute {
+            try {
+                val desired=SignageApi(settings.portalUrl,secret).control().optLong("requested_version",0L)
+                if(desired>settings.lastControlVersion)
+                    ui.post {remoteControlRevision=desired;sync()}
+            }catch(e:Exception){logs.record("warn","control",e.javaClass.simpleName,e.message?:"")}
+        }
+    }
     private fun sync(){val secret=token.load()?:return;if(syncInFlight)return;syncInFlight=true;lastSync=System.currentTimeMillis()
+        logs.record("info","sync","Inicio de sincronización")
         worker.execute{
             try{
                 val api=SignageApi(settings.portalUrl,secret)
+                // Diagnostic upload always precedes content and settings.
+                try{logs.upload(api)}catch(e:Exception){logs.record("warn","logs_upload",e.javaClass.simpleName,e.message?:"")}
                 // Apply remote settings first; the player then uses the new preferences.
                 // If the remote config endpoint is temporarily unavailable, preserve cached playback.
                 try{DeviceConfigSync(settings,api).poll()}catch(e:Exception){lastError="Configuración remota: ${e.message}"}
                 val obj=api.manifest()
+                logs.record("info","manifest","Programación recibida","schema=${obj.optInt("schema_version")}; device=${obj.optInt("device_id")}")
                 cache.sync(api,obj){msg->ui.post{status?.apply{visibility=View.VISIBLE;text=msg}}}
+                logs.record("info","sync","Medios validados; programación activada")
+                val pending=remoteControlRevision
+                if(pending>settings.lastControlVersion) {
+                    try{
+                        api.acknowledgeControl(pending);settings.lastControlVersion=pending
+                        logs.record("info","sync","Sincronización remota confirmada","revision=$pending")
+                    }catch(e:Exception){logs.record("warn","sync_ack",e.javaClass.simpleName,e.message?:"")}
+                }
                 val model=ManifestModel(obj)
                 ui.post{manifest=model;lastLive=model.widget();syncInFlight=false;showMode();selectPlaylist();drawLiveBoard();status?.postDelayed({status?.visibility=View.GONE},3500)}
-                api.heartbeat(JSONObject().put("app_version","0.4.3").put("active_mode",model.activeMode(settings))
+                api.heartbeat(JSONObject().put("app_version","0.4.4").put("active_mode",model.activeMode(settings))
                  .put("cached_media",cache.countMedia()).put("free_storage_bytes",cache.freeBytes()).put("last_error",lastError.take(200)))
-            }catch(e:Exception){lastError=e.message?:"Error de sincronización";ui.post{syncInFlight=false;if((manifest==null||!settings.offlinePlayback)&&token.load()!=null)showOfflineError();else status?.apply{visibility=View.VISIBLE;text="Sin conexión, reproduciendo caché: $lastError"}}}
+            }catch(e:Exception){lastError=e.message?:"Error de sincronización"
+                logs.record("error","sync",e.javaClass.simpleName,lastError)
+                ui.post{syncInFlight=false;if((manifest==null||!settings.offlinePlayback)&&token.load()!=null)showOfflineError();else status?.apply{visibility=View.VISIBLE;text="Sin conexión, reproduciendo caché: $lastError"}}}
         }
     }
     private fun showOfflineError(){val box=ScreenStyles.column(this)

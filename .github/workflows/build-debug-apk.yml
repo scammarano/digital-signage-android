@@ -41,7 +41,7 @@ jobs:
       - name: Upload signed development build artifact
         uses: actions/upload-artifact@v4
         with:
-          name: DigitalSignage-TV-v0.4.3-API19-legacy-debug
+          name: DigitalSignage-TV-v0.4.4-API19-diagnostics-debug
           path: |
             app/build/outputs/apk/debug/app-debug.apk
             app/build/outputs/apk/debug/apk-metadata.txt

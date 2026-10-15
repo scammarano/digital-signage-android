@@ -17,6 +17,9 @@ class SignageApi(private val baseUrl:String, private val token:String?) {
     fun desiredConfig()=call("api-device-config.php?op=desired")
     fun reportConfig(data:JSONObject)=call("api-device-config.php?op=report",data)
     fun heartbeat(data:JSONObject)=call("api-device.php?op=heartbeat",data)
+    fun control():JSONObject=call("api-device-telemetry.php?op=control")
+    fun acknowledgeControl(revision:Long):JSONObject=call("api-device-telemetry.php?op=ack",JSONObject().put("revision",revision))
+    fun submitLogs(events:org.json.JSONArray):JSONObject=call("api-device-telemetry.php?op=logs",JSONObject().put("events",events))
     private fun call(path:String,payload:JSONObject?=null):JSONObject {
         val url=URL(baseUrl+path)
         val conn=url.openConnection() as HttpsURLConnection

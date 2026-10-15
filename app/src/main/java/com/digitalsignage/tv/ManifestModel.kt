@@ -10,6 +10,8 @@ class ManifestModel(val json:JSONObject){
     val timezone:ZoneId=try{ZoneId.of(json.optString("timezone","UTC"))}catch(_:Exception){ZoneId.of("UTC")}
     fun localNow():LocalDateTime = LocalDateTime.now(timezone)
     fun activeMode(settings:SettingsStore):Int {
+        val override=settings.manualMode
+        if(override in 1..3 && (settings.enabledModes and (1 shl (override-1)))!=0)return override
         val rows=json.optJSONArray("mode_blocks")?:JSONArray()
         val blocks=ArrayList<TimeRules.ModeBlock>()
         for(i in 0 until rows.length()){
