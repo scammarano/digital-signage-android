@@ -31,12 +31,8 @@ class OverlayService:Service(){
     private var lastFetch=0L;private var index=0;private var syncing=false
     private val ticker=object:Runnable{override fun run(){try{pulse()}finally{handler.postDelayed(this,1000)}}}
     override fun onCreate(){super.onCreate();settings=SettingsStore(this);cache=CacheManager(this,settings)
-        val manager=getSystemService(NotificationManager::class.java)
-        manager.createNotificationChannel(NotificationChannel("signage_overlay","Digital Signage Overlay",NotificationManager.IMPORTANCE_LOW))
-        val pending=PendingIntent.getActivity(this,0,Intent(this,MainActivity::class.java),PendingIntent.FLAG_IMMUTABLE or PendingIntent.FLAG_UPDATE_CURRENT)
-        val notice=Notification.Builder(this,"signage_overlay").setContentTitle("Digital Signage activo")
-            .setContentText("Publicidad programada en segundo plano").setSmallIcon(android.R.drawable.ic_media_play).setContentIntent(pending).setOngoing(true).build()
-        startForeground(91,notice)
+        startForeground(91, AndroidCompat.notification(this, "signage_overlay", "Digital Signage Overlay",
+            "Digital Signage activo", "Publicidad programada en segundo plano"))
         wm=getSystemService(Context.WINDOW_SERVICE) as WindowManager
         handler.post(ticker)
     }
@@ -44,7 +40,7 @@ class OverlayService:Service(){
     override fun onStartCommand(intent:Intent?,flags:Int,startId:Int):Int=START_STICKY
     override fun onDestroy(){handler.removeCallbacks(ticker);hide();worker.shutdownNow();super.onDestroy()}
     private fun pulse(){
-        if(!Settings.canDrawOverlays(this)){hide();stopSelf();return}
+        if(!AndroidCompat.canOverlay(this)){hide();stopSelf();return}
         val model=cache.active()?.let{ManifestModel(it)}?:return
         if(model.activeMode(settings)!=2){hide();stopSelf();return}
         val now=System.currentTimeMillis()
@@ -53,7 +49,7 @@ class OverlayService:Service(){
                 try{val secret=SecureToken(this).load()?:return@execute;val api=SignageApi(settings.portalUrl,secret)
                     try{DeviceConfigSync(settings,api).poll()}catch(_:Exception){}
                     cache.sync(api,api.manifest()){};
-                    api.heartbeat(JSONObject().put("app_version","0.4.1").put("active_mode",2).put("cached_media",cache.countMedia()).put("free_storage_bytes",cache.freeBytes()))
+                    api.heartbeat(JSONObject().put("app_version","0.4.3").put("active_mode",2).put("cached_media",cache.countMedia()).put("free_storage_bytes",cache.freeBytes()))
                 }catch(_:Exception){}finally{syncing=false}
             }
         }
@@ -82,7 +78,7 @@ class OverlayService:Service(){
             val w=when(layout){"side","half_vertical"->(width*(if(layout=="side")0.27 else 0.5)).toInt();else->width}
             val h=when(layout){"bottom"->(height*.22).toInt();"half_horizontal"->height/2;else->height}
             val gravity=if(layout=="side"||layout=="half_vertical")Gravity.TOP or Gravity.RIGHT else Gravity.BOTTOM
-            val attrs=WindowManager.LayoutParams(w,h,WindowManager.LayoutParams.TYPE_APPLICATION_OVERLAY,
+            val attrs=WindowManager.LayoutParams(w,h,AndroidCompat.overlayWindowType,
               WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,PixelFormat.TRANSLUCENT).apply{this.gravity=gravity;this.alpha=0.8f}
             wm?.addView(frame,attrs);current=frame;frame.animate().alpha(1f).setDuration(500).start()
         }catch(_:Exception){hide()}

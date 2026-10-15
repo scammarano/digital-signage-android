@@ -28,10 +28,8 @@ class LocalAdminService:Service(){
             val settings=SettingsStore(this)
             if(!settings.localAdminEnabled())throw IllegalStateException("Inicia el panel desde el menú local")
             if(server?.isRunning()==true)return START_NOT_STICKY
-            val channel="signage_lan_admin"
-            (getSystemService(NOTIFICATION_SERVICE) as NotificationManager).createNotificationChannel(NotificationChannel(channel,"Administración local",NotificationManager.IMPORTANCE_LOW))
-            val notification=Notification.Builder(this,channel).setContentTitle("Digital Signage · Panel LAN temporal").setContentText("La administración local se cerrará en 30 minutos").setSmallIcon(android.R.drawable.ic_menu_manage).build()
-            startForeground(4101,notification)
+            startForeground(4101, AndroidCompat.notification(this, "signage_lan_admin", "Administración local",
+                "Digital Signage · Panel LAN temporal", "La administración local se cerrará en 30 minutos"))
             server=LocalAdminServer(this,settings).also{it.start()}
             runningUrl=server!!.address;pairingCode=server!!.code;lastError=""
             handler.removeCallbacks(autoStop);handler.postDelayed(autoStop,30*60*1000L)

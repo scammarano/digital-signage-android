@@ -1,6 +1,7 @@
 package com.digitalsignage.tv
 
 import android.graphics.BitmapFactory
+import android.os.Build
 import android.net.Uri
 import android.os.Handler
 import android.os.Looper
@@ -58,7 +59,7 @@ class MediaDeck(private val stage:FrameLayout,private val cache:CacheManager,pri
                 try{
                     val options=BitmapFactory.Options().apply{inJustDecodeBounds=true}
                     BitmapFactory.decodeFile(media.absolutePath,options)
-                    val max=2048;var sample=1
+                    val max=if(Build.VERSION.SDK_INT <= 20) 1280 else 2048;var sample=1
                     while(options.outWidth/sample>max||options.outHeight/sample>max)sample*=2
                     val bitmap=BitmapFactory.decodeFile(media.absolutePath,BitmapFactory.Options().apply{inSampleSize=sample})?:throw IllegalStateException("Imagen dañada")
                     main.post{

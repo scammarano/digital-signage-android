@@ -20,6 +20,7 @@ class SignageApi(private val baseUrl:String, private val token:String?) {
     private fun call(path:String,payload:JSONObject?=null):JSONObject {
         val url=URL(baseUrl+path)
         val conn=url.openConnection() as HttpsURLConnection
+        LegacyTls.configure(conn)
         try {
             conn.instanceFollowRedirects=false;conn.connectTimeout=15000;conn.readTimeout=20000
             conn.setRequestProperty("Accept","application/json")
@@ -44,6 +45,7 @@ class SignageApi(private val baseUrl:String, private val token:String?) {
         val dest=URL(source);val root=URL(baseUrl)
         require(dest.protocol=="https" && dest.host.equals(root.host,true) && dest.port==root.port && dest.path.startsWith(root.path)){"Medio fuera del servidor autorizado"}
         val conn=dest.openConnection() as HttpsURLConnection
+        LegacyTls.configure(conn)
         conn.instanceFollowRedirects=false;conn.connectTimeout=20000;conn.readTimeout=40000
         if(token!=null)conn.setRequestProperty("Authorization","Bearer $token")
         conn.setRequestProperty("Accept","*/*")

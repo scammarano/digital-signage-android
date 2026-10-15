@@ -2,6 +2,7 @@ package com.digitalsignage.tv
 
 import android.content.Context
 import android.os.Environment
+import android.os.Build
 import android.util.Base64
 import java.io.File
 import java.security.SecureRandom
@@ -33,7 +34,7 @@ class SettingsStore(private val context: Context) {
         get() = p.getInt("sync_minutes",5).coerceIn(1,60)
         set(v) = p.edit().putInt("sync_minutes",v.coerceIn(1,60)).apply()
     var cacheMb: Int
-        get() = p.getInt("cache_mb",1024).coerceIn(128,16384)
+        get() = p.getInt("cache_mb",if(Build.VERSION.SDK_INT <= 20) 128 else 256).coerceIn(128,16384)
         set(v) = p.edit().putInt("cache_mb",v.coerceIn(128,16384)).apply()
     var externalCache: Boolean
         get() = p.getBoolean("external_cache",false)
@@ -61,7 +62,7 @@ class SettingsStore(private val context: Context) {
     }
     private fun pinHash(pin:String,salt:ByteArray):ByteArray {
         val spec=PBEKeySpec(pin.toCharArray(),salt,120000,256)
-        return try{ SecretKeyFactory.getInstance("PBKDF2WithHmacSHA256").generateSecret(spec).encoded } finally{spec.clearPassword()}
+        return try{ SecretKeyFactory.getInstance(if (Build.VERSION.SDK_INT >= 26) "PBKDF2WithHmacSHA256" else "PBKDF2WithHmacSHA1").generateSecret(spec).encoded } finally{spec.clearPassword()}
     }
     // Only allow-listed, non-secret options can be backed up or sent remotely.
     fun publicSnapshot():org.json.JSONObject = org.json.JSONObject().apply {

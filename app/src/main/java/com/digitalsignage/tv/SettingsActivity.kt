@@ -43,6 +43,7 @@ class SettingsActivity:Activity(){
     private fun showSettings(){root=ScreenStyles.column(this)
         root.addView(ScreenStyles.label(this,"DIGITAL SIGNAGE · CONFIGURACIÓN",28f))
         root.addView(ScreenStyles.label(this,"Ajustes de este equipo, no modifican otras pantallas",16f))
+        root.addView(ScreenStyles.label(this,"Android ${android.os.Build.VERSION.RELEASE} (API ${android.os.Build.VERSION.SDK_INT}) · ${LegacyProfile.description()}",14f))
         toggle("Arrancar automáticamente cuando Android lo permita",config.autoStart){config.autoStart=it}
         toggle("Mostrar logo al iniciar la app",config.splash){config.splash=it}
         toggle("Mantener último contenido offline",config.offlinePlayback){config.offlinePlayback=it}
@@ -57,7 +58,12 @@ class SettingsActivity:Activity(){
             require(v.startsWith("https://")&&v.endsWith("/")&&java.net.URL(v).host.isNotBlank()){"URL HTTPS inválida"};config.portalUrl=v
         }
         root.addView(ScreenStyles.button(this,"Autorizar superposición Android"){
-            startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION,android.net.Uri.parse("package:$packageName")))
+            if (android.os.Build.VERSION.SDK_INT >= 23) {
+                try { startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION,android.net.Uri.parse("package:$packageName"))) }
+                catch (_:Exception) { AlertDialog.Builder(this).setMessage("Ajuste Overlay no disponible").setPositiveButton("Aceptar",null).show() }
+            } else {
+                AlertDialog.Builder(this).setMessage("Overlay heredado: configurar permisos desde Fire OS / fabricante.").setPositiveButton("Aceptar",null).show()
+            }
         })
         root.addView(ScreenStyles.button(this,"Cambiar PIN"){val input=EditText(this).apply{hint="Nuevo PIN de 6 o más dígitos";inputType=2}
             AlertDialog.Builder(this).setTitle("Cambiar PIN").setView(input).setNegativeButton("Cancelar",null)
@@ -67,7 +73,7 @@ class SettingsActivity:Activity(){
         root.addView(ScreenStyles.button(this,"Iniciar panel web local durante 30 min"){
             config.setLocalAdminEnabled(true)
             val intent=Intent(this,LocalAdminService::class.java).setAction(LocalAdminService.ACTION_START)
-            try{startForegroundService(intent)}catch(e:Exception){config.setLocalAdminEnabled(false)}
+            try{AndroidCompat.startServiceCompat(this,intent)}catch(e:Exception){config.setLocalAdminEnabled(false)}
             android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
                 val url=LocalAdminService.runningUrl
                 val code=LocalAdminService.pairingCode

@@ -138,10 +138,15 @@ class MainActivity : Activity() {
     private fun showOverlayControl(){
         val box=ScreenStyles.column(this)
         box.addView(ScreenStyles.label(this,"Modo Overlay programado",30f))
-        val available=Settings.canDrawOverlays(this)
+        val available=AndroidCompat.canOverlay(this)
         box.addView(ScreenStyles.label(this,if(available)"Overlay autorizado. Pulsa Inicio del control remoto para abrir otra app." else "Debes autorizar Mostrar sobre otras aplicaciones para usar Overlay."))
         if(!available)box.addView(ScreenStyles.button(this,"Autorizar overlay"){
-            startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION,android.net.Uri.parse("package:$packageName")))
+            if (android.os.Build.VERSION.SDK_INT >= 23) {
+                try { startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION,android.net.Uri.parse("package:$packageName"))) }
+                catch(e:Exception) { lastError="Configuración Overlay no disponible: ${e.message}" }
+            } else {
+                android.widget.Toast.makeText(this, "Overlay administrado por Fire OS / fabricante", android.widget.Toast.LENGTH_LONG).show()
+            }
         })
         else startOverlay()
         box.addView(ScreenStyles.button(this,"Configuración local"){openSettings()})
@@ -150,7 +155,7 @@ class MainActivity : Activity() {
     }
     private fun startOverlay(){if(overlayRunning)return
         if(!Settings.canDrawOverlays(this))return
-        try{val intent=Intent(this,OverlayService::class.java);startForegroundService(intent);overlayRunning=true}catch(e:Exception){lastError="Overlay no disponible: ${e.message}"}
+        try{val intent=Intent(this,OverlayService::class.java);AndroidCompat.startServiceCompat(this,intent);overlayRunning=true}catch(e:Exception){lastError="Overlay no disponible: ${e.message}"}
     }
     private fun stopOverlay(){if(overlayRunning){stopService(Intent(this,OverlayService::class.java));overlayRunning=false}}
     private fun selectPlaylist(){
@@ -194,7 +199,7 @@ class MainActivity : Activity() {
                 cache.sync(api,obj){msg->ui.post{status?.apply{visibility=View.VISIBLE;text=msg}}}
                 val model=ManifestModel(obj)
                 ui.post{manifest=model;lastLive=model.widget();syncInFlight=false;showMode();selectPlaylist();drawLiveBoard();status?.postDelayed({status?.visibility=View.GONE},3500)}
-                api.heartbeat(JSONObject().put("app_version","0.4.1").put("active_mode",model.activeMode(settings))
+                api.heartbeat(JSONObject().put("app_version","0.4.3").put("active_mode",model.activeMode(settings))
                  .put("cached_media",cache.countMedia()).put("free_storage_bytes",cache.freeBytes()).put("last_error",lastError.take(200)))
             }catch(e:Exception){lastError=e.message?:"Error de sincronización";ui.post{syncInFlight=false;if((manifest==null||!settings.offlinePlayback)&&token.load()!=null)showOfflineError();else status?.apply{visibility=View.VISIBLE;text="Sin conexión, reproduciendo caché: $lastError"}}}
         }
