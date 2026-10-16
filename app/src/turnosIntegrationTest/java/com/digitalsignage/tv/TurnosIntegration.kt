@@ -74,7 +74,12 @@ object TurnosIntegration {
             fixture.start();waitFor(test,screen,"live-board","En línea")
             fixture.command("start",ticket);fixture.command("finish",ticket);fixture.issue();fixture.call()
             waitFor(test,screen,"live-board","A-002")
-            fixture.restore();waitFor(test,screen,"live-board","En línea")
+            for(i in 1..4){
+                fixture.restore()
+                val confirmed=TurnosLocalApi.read(fixture.base,"/snapshot",binding.token())
+                check(confirmed.getString("screen_id")==binding.id){"Authority identity changed after rebind"}
+            }
+            waitFor(test,screen,"live-board","En línea")
             check(binding.cached()!!.getLong("sequence")>0)
             fixture.revokeViewers();waitFor(test,screen,"live-board","Enlace revocado")
             test.runOnMainSync{screen.finish()};test.waitForIdleSync()
