@@ -1,0 +1,91 @@
+name: Turnos integration · native Signage candidate
+on:
+  push:
+    branches: ['feat/turnos-native-consumer']
+  workflow_dispatch:
+permissions:
+  contents: read
+jobs:
+  verify:
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          path: signage
+      - uses: actions/checkout@v4
+        with:
+          repository: scammarano/2cam-turnos
+          ref: 76176d5b40f137b35aa6388980cc7ac777d06d4b
+          path: turnos-authority
+      - uses: actions/setup-java@v4
+        with:
+          distribution: temurin
+          java-version: '17'
+      - uses: android-actions/setup-android@v3
+        with:
+          packages: 'platform-tools platforms;android-35 build-tools;35.0.0'
+          log-accepted-android-sdk-licenses: false
+      - uses: gradle/actions/setup-gradle@v4
+        with:
+          gradle-version: '8.9'
+      - uses: actions/cache@v4
+        with:
+          path: ~/.android/debug.keystore
+          key: digital-signage-sports-debug-v1
+      - name: Candidate only; preserve permanent signer policy
+        run: echo 'A test-signed verification candidate is not a customer update. Final delivery requires the original permanent signer.'
+      - name: Build, preserve configuration parity and test both domain modules
+        working-directory: signage
+        run: |
+          python3 scripts/create_icon.py
+          python3 scripts/check_config_parity.py
+          gradle --no-daemon :sports-core:test :turnos-authority-fixture:test :app:assembleDebug :app:assembleDebugAndroidTest --stacktrace
+          "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --min-sdk-version 19 app/build/outputs/apk/debug/app-debug.apk
+          python3 - <<'PY'
+          import zipfile
+          with zipfile.ZipFile('app/build/outputs/apk/debug/app-debug.apk') as z:
+              for n in z.namelist():
+                  if n.endswith('.dex'):
+                      assert b'Lservices/twocam/turnoscore/' not in z.read(n), 'Turnos rules leaked into player APK'
+          print('Turnos authority is absent from the player APK; test APK only.')
+          PY
+      - name: Enable KVM
+        run: |
+          echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
+          sudo udevadm control --reload-rules
+          sudo udevadm trigger --name-match=kvm
+      - uses: reactivecircus/android-emulator-runner@v2
+        with:
+          api-level: 22
+          target: default
+          arch: x86_64
+          profile: Nexus 6
+          disable-animations: true
+          script: |
+            adb install -r signage/app/build/outputs/apk/debug/app-debug.apk
+            adb install -r signage/app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+            adb shell am instrument -w -e turnos_integration true com.digitalsignage.tv.test/com.digitalsignage.tv.SportsInstrumentation | tee /tmp/turnos-signage-test.txt
+            grep -q SPORTS_FIRE_DIRECT_PASS /tmp/turnos-signage-test.txt
+            grep -q TURNOS_SIGNAGE_INTEGRATION_PASS /tmp/turnos-signage-test.txt
+      - name: Package reviewable candidate
+        run: |
+          mkdir -p candidate
+          cp signage/app/build/outputs/apk/debug/app-debug.apk candidate/Signage-0.4.17-TURNOS-TEST-CANDIDATE-NO-INSTALAR.apk
+          cp signage/docs/TURNOS_LOCAL_INTEGRATION.md candidate/LEEME.md
+          cd candidate
+          sha256sum *.apk > SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: SIGNAGE-TURNOS-0.4.17-REQUIERE-FIRMA-PERMANENTE
+          path: candidate/
+      - uses: actions/upload-artifact@v4
+        if: always()
+        with:
+          name: turnos-signage-verification
+          path: |
+            /tmp/turnos-signage-test.txt
+            signage/app/build/outputs/logs/
+            signage/sports-core/build/reports/tests/test/
+            turnos-authority/native-core/build/reports/tests/test/
+          if-no-files-found: ignore

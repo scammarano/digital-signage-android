@@ -10,8 +10,9 @@ import services.twocam.sportscore.LocalSportsHost
 
 /** API22 real: servidor dentro de APK, sin Node ni computadora como autoridad. */
 class SportsInstrumentation:Instrumentation(){
+    private var withTurnos=false
     private var pinVerifyMs=-1L
-    override fun onCreate(arguments:Bundle?){super.onCreate(arguments);start()}
+    override fun onCreate(arguments:Bundle?){super.onCreate(arguments);withTurnos=arguments?.getString("turnos_integration")=="true";start()}
     override fun onStart(){val result=Bundle();try{exercise();result.putString("stream","SPORTS_FIRE_DIRECT_PASS\nMEDIA_FORMATS_CENTRAL_PASS\nPIN_MIGRATION_PASS subsequent_verification_ms=$pinVerifyMs\nOVERLAY_WINDOW_PASS BOOT_BACKGROUND_POLICY_PASS MODE_PLAYLIST_GATE_PASS\n");finish(Activity.RESULT_OK,result)}catch(e:Throwable){result.putString("stream","SPORTS_FIRE_DIRECT_FAIL ${e.javaClass.simpleName}: ${e.message}\n");finish(Activity.RESULT_CANCELED,result)}}
     private fun api(method:String,path:String,token:String?=null,body:JSONObject?=null,key:String?=null):JSONObject {
         val c=java.net.URL(SportsRuntime.address+"/api/v1"+path).openConnection() as java.net.HttpURLConnection
@@ -72,6 +73,10 @@ class SportsInstrumentation:Instrumentation(){
         check(host.controls().length()==3);try{host.openPairing("home");error("Aceptó cuarto control")}catch(e:LocalSportsHost.Failure){check(e.status==409)}
         host.revoke(pair.getString("controlId"));check(host.controls().length()==2)
         runOnMainSync{activity.finish()}
+        if(withTurnos){
+            val integration=Class.forName("com.digitalsignage.tv.TurnosIntegration")
+            try{integration.getMethod("exercise",Instrumentation::class.java).invoke(null,this)}catch(e:java.lang.reflect.InvocationTargetException){throw e.targetException}
+        }
     }
     private fun exercisePin(){
         val settings=SettingsStore(targetContext)
@@ -140,4 +145,5 @@ class SportsInstrumentation:Instrumentation(){
         }
     }
 }
+
 
