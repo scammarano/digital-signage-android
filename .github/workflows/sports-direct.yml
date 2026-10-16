@@ -43,6 +43,19 @@ jobs:
           "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --min-sdk-version 19 app/build/outputs/apk/debug/app-debug.apk
           "$ANDROID_HOME/build-tools/35.0.0/aapt" dump badging app/build/outputs/apk/debug/app-debug.apk | tee /tmp/fire-apk-metadata.txt
           grep -q "sdkVersion:'19'" /tmp/fire-apk-metadata.txt
+      - name: Package Fire APK
+        run: |
+          mkdir delivery
+          cp app/build/outputs/apk/debug/app-debug.apk delivery/2Cam-Digital-Signage-v0.4.12-debug-playlists.apk
+          cp docs/GUIA_TRANSICIONES_PLAYLISTS_v0412.md delivery/GUIA_TRANSICIONES.md
+          cp DEBUG_ACK_LEEME.md delivery/DIAGNOSTICO.md
+          cd delivery
+          sha256sum *.apk > SHA256SUMS.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: 2cam-fire-0.4.12-debug-playlists-APK
+          path: delivery/
+          retention-days: 30
       - name: Enable KVM
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
@@ -60,19 +73,6 @@ jobs:
             adb install -r app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
             adb shell am instrument -w com.digitalsignage.tv.test/com.digitalsignage.tv.SportsInstrumentation | tee /tmp/fire-sports-test.txt
             grep -q SPORTS_FIRE_DIRECT_PASS /tmp/fire-sports-test.txt
-      - name: Package Fire APK
-        run: |
-          mkdir delivery
-          cp app/build/outputs/apk/debug/app-debug.apk delivery/2Cam-Digital-Signage-v0.4.12-debug-playlists.apk
-          cp docs/GUIA_TRANSICIONES_PLAYLISTS_v0412.md delivery/GUIA_TRANSICIONES.md
-          cp DEBUG_ACK_LEEME.md delivery/DIAGNOSTICO.md
-          cd delivery
-          sha256sum *.apk > SHA256SUMS.txt
-      - uses: actions/upload-artifact@v4
-        with:
-          name: 2cam-fire-0.4.12-debug-playlists-APK
-          path: delivery/
-          retention-days: 30
       - uses: actions/upload-artifact@v4
         if: always()
         with:
