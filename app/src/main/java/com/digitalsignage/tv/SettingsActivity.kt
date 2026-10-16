@@ -105,6 +105,7 @@ class SettingsActivity:Activity(){
         root.addView(ScreenStyles.button(this,"Sports directo LAN · enlazar control"){
             startActivity(Intent(this,SportsActivity::class.java))
         })
+        root.addView(ScreenStyles.label(this,"Formatos centrales: lateral ${config.mediaFormatPercent("side")}% del ancho · inferior ${config.mediaFormatPercent("bottom")}% del alto. Se administran en Medios, no por pantalla.",15f))
         val snapshot=config.publicSnapshot()
         var group=""
         for(def in config.schemaFields()){

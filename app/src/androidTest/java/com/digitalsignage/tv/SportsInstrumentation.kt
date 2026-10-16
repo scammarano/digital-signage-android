@@ -12,7 +12,7 @@ import services.twocam.sportscore.LocalSportsHost
 class SportsInstrumentation:Instrumentation(){
     private var pinVerifyMs=-1L
     override fun onCreate(arguments:Bundle?){super.onCreate(arguments);start()}
-    override fun onStart(){val result=Bundle();try{exercise();result.putString("stream","SPORTS_FIRE_DIRECT_PASS\nPIN_MIGRATION_PASS subsequent_verification_ms=$pinVerifyMs\nOVERLAY_WINDOW_PASS BOOT_BACKGROUND_POLICY_PASS MODE_PLAYLIST_GATE_PASS\n");finish(Activity.RESULT_OK,result)}catch(e:Throwable){result.putString("stream","SPORTS_FIRE_DIRECT_FAIL ${e.javaClass.simpleName}: ${e.message}\n");finish(Activity.RESULT_CANCELED,result)}}
+    override fun onStart(){val result=Bundle();try{exercise();result.putString("stream","SPORTS_FIRE_DIRECT_PASS\nMEDIA_FORMATS_CENTRAL_PASS\nPIN_MIGRATION_PASS subsequent_verification_ms=$pinVerifyMs\nOVERLAY_WINDOW_PASS BOOT_BACKGROUND_POLICY_PASS MODE_PLAYLIST_GATE_PASS\n");finish(Activity.RESULT_OK,result)}catch(e:Throwable){result.putString("stream","SPORTS_FIRE_DIRECT_FAIL ${e.javaClass.simpleName}: ${e.message}\n");finish(Activity.RESULT_CANCELED,result)}}
     private fun api(method:String,path:String,token:String?=null,body:JSONObject?=null,key:String?=null):JSONObject {
         val c=java.net.URL(SportsRuntime.address+"/api/v1"+path).openConnection() as java.net.HttpURLConnection
         c.connectTimeout=4000;c.readTimeout=4000;c.requestMethod=method
@@ -22,6 +22,14 @@ class SportsInstrumentation:Instrumentation(){
         }finally{c.disconnect()}
     }
     private fun exercise(){
+        val formats=JSONObject().put("revision",4).put("side_width_pct",35).put("bottom_height_pct",30)
+        check(MediaFormats.percent(formats,"side")==35 && MediaFormats.percent(formats,"bottom")==30)
+        check(MediaFormats.percent(null,"side")==40 && MediaFormats.percent(null,"bottom")==20)
+        val settings=SettingsStore(targetContext)
+        check(settings.schemaFields().size==43)
+        val old=settings.publicSnapshot().put("overlay_width_pct",77).put("queue_height_pct",66)
+        check(!settings.validateSettings(old).has("overlay_width_pct"))
+        var rejected=false;try{MediaFormats.validate(JSONObject().put("revision",1).put("side_width_pct",101).put("bottom_height_pct",20))}catch(_:IllegalArgumentException){rejected=true};check(rejected)
         exercisePin()
         exerciseOverlay()
         val settings=SettingsStore(targetContext)

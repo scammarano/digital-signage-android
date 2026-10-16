@@ -7,6 +7,8 @@ fields=schema['fields'];keys=[f['key'] for f in fields]
 assert len(keys)==len(set(keys))
 assert list(schema['modes'].values())==['Cartelera','Overlay','Turnos','Marcador deportivo']
 assert schema['schema']==2
+assert len(fields)==43
+assert not any(f['key'].endswith(('_width_pct','_height_pct')) for f in fields)
 assert {'debug_hud_enabled','enabled_modes','primary_mode','queue_layout','scoreboard_layout'}<=set(keys)
 for mode in ['overlay','queue','scoreboard']:
  for layout in schema['layouts']:assert mode+'_playlist_'+layout in keys

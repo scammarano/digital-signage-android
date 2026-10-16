@@ -46,12 +46,9 @@ class SettingsStore(private val context: Context) {
     var overlayLayout:String
         get()=p.getString("overlay_layout","bottom")?.takeIf{it in overlayLayouts}?:"bottom"
         set(v){require(v in overlayLayouts);p.edit().putString("overlay_layout",v).apply()}
-    var overlayWidthPct:Int
-        get()=p.getInt("overlay_width_pct",30).coerceIn(15,100)
-        set(v){require(v in 15..100);p.edit().putInt("overlay_width_pct",v).apply()}
-    var overlayHeightPct:Int
-        get()=p.getInt("overlay_height_pct",25).coerceIn(10,100)
-        set(v){require(v in 10..100);p.edit().putInt("overlay_height_pct",v).apply()}
+    fun mediaFormatPercent(layout:String):Int=MediaFormats.percent(CacheManager(context,this).active()?.optJSONObject("media_formats"),layout)
+    val overlayWidthPct:Int get()=mediaFormatPercent("side")
+    val overlayHeightPct:Int get()=mediaFormatPercent("bottom")
     var overlayOpacity:Int
         get()=p.getInt("overlay_opacity",90).coerceIn(40,100)
         set(v){require(v in 40..100);p.edit().putInt("overlay_opacity",v).apply()}
@@ -225,12 +222,13 @@ class SettingsStore(private val context: Context) {
             if(j.has("enabled_modes") && j.optInt("enabled_modes") and 4!=0)j.put("enabled_modes",j.getInt("enabled_modes") or 8)
         }
         j.remove("smart_app");j.remove("smart_header_pct")
+        for(m in listOf("overlay","queue","scoreboard"))for(k in listOf("width","height"))j.remove("${m}_${k}_pct")
         if(j.optString("overlay_layout") =="right")j.put("overlay_layout","side")
         return j
     }
     fun validateSettings(j:org.json.JSONObject):org.json.JSONObject {
         val full=publicSnapshot();val allowed=schemaFields().map{it.getString("key")}.toSet()
-        val keys=j.keys();while(keys.hasNext()){val k=keys.next();require(k in allowed){"Parámetro desconocido: $k"};full.put(k,j.get(k))}
+        val migrated=migrateV1(j);val keys=migrated.keys();while(keys.hasNext()){val k=keys.next();require(k in allowed){"Parámetro desconocido: $k"};full.put(k,migrated.get(k))}
         for(f in schemaFields()) {val k=f.getString("key");val v=full.get(k)
             when(f.getString("type")) {
                 "bool"->require(v is Boolean){"Tipo inválido: $k"}

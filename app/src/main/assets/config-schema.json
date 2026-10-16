@@ -189,24 +189,6 @@
       "layout": "half_vertical"
     },
     {
-      "key": "overlay_width_pct",
-      "label": "Ancho de franja lateral (%)",
-      "group": "Overlay",
-      "default": 40,
-      "type": "int",
-      "min": 15,
-      "max": 100
-    },
-    {
-      "key": "overlay_height_pct",
-      "label": "Alto de franja inferior (%)",
-      "group": "Overlay",
-      "default": 20,
-      "type": "int",
-      "min": 10,
-      "max": 100
-    },
-    {
       "key": "overlay_opacity",
       "label": "Opacidad (%)",
       "group": "Overlay",
@@ -298,24 +280,6 @@
       "layout": "half_vertical"
     },
     {
-      "key": "queue_width_pct",
-      "label": "Ancho de franja lateral (%)",
-      "group": "Turnos",
-      "default": 40,
-      "type": "int",
-      "min": 15,
-      "max": 80
-    },
-    {
-      "key": "queue_height_pct",
-      "label": "Alto de franja inferior (%)",
-      "group": "Turnos",
-      "default": 20,
-      "type": "int",
-      "min": 10,
-      "max": 80
-    },
-    {
       "key": "smart_sound",
       "label": "Aviso sonoro al llamar turno",
       "group": "Turnos",
@@ -403,24 +367,6 @@
       "min": 0,
       "max": 2147483647,
       "layout": "half_vertical"
-    },
-    {
-      "key": "scoreboard_width_pct",
-      "label": "Ancho de franja lateral (%)",
-      "group": "Marcador deportivo",
-      "default": 40,
-      "type": "int",
-      "min": 15,
-      "max": 80
-    },
-    {
-      "key": "scoreboard_height_pct",
-      "label": "Alto de franja inferior (%)",
-      "group": "Marcador deportivo",
-      "default": 20,
-      "type": "int",
-      "min": 10,
-      "max": 80
     },
     {
       "key": "scoreboard_source",

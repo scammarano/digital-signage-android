@@ -287,8 +287,8 @@ class MainActivity : Activity() {
         val layout=if(smart)settings.modeLayout(activeMode) else "fullscreen"
         val dm=resources.displayMetrics;val w=dm.widthPixels;val h=dm.heightPixels
         val prefix=if(activeMode==4)"scoreboard" else "queue"
-        val mediaW=when(layout){"side"->w*settings.settingInt(prefix+"_width_pct")/100;"half_vertical"->w/2;else->w}
-        val mediaH=when(layout){"bottom"->h*settings.settingInt(prefix+"_height_pct")/100;"half_horizontal"->h/2;else->h}
+        val mediaW=when(layout){"side"->w*settings.mediaFormatPercent("side")/100;"half_vertical"->w/2;else->w}
+        val mediaH=when(layout){"bottom"->h*settings.mediaFormatPercent("bottom")/100;"half_horizontal"->h/2;else->h}
         if(smart){
             val label=ScreenStyles.label(this,"Esperando aplicación…",26f).apply{gravity=Gravity.CENTER;setBackgroundColor(0xFF152845.toInt())}
             mode3Header=label
@@ -449,7 +449,7 @@ class MainActivity : Activity() {
     }
 
     private fun playbackManifestKey(obj:JSONObject):String {
-        val fields=listOf("orientation","timezone","schedules","fallback","mode_blocks","device_options","playlist_catalog")
+        val fields=listOf("media_formats","orientation","timezone","schedules","fallback","mode_blocks","device_options","playlist_catalog")
         return fields.joinToString("|"){key->obj.opt(key)?.toString()?:""}
     }
     private fun sync(){val secret=token.load()?:return;if(syncInFlight)return;syncInFlight=true;lastSync=System.currentTimeMillis()
