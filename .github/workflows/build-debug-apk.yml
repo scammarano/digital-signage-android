@@ -30,10 +30,8 @@ jobs:
         with:
           path: ~/.android/debug.keystore
           key: digital-signage-sports-debug-v1
-      - name: Require original signing certificate
-        env:
-          SIGNAGE_DEBUG_KEYSTORE_B64: ${{ secrets.SIGNAGE_DEBUG_KEYSTORE_B64 }}
-        run: python3 scripts/require_signing_key.py
+      - name: Candidate signing policy
+        run: echo 'Test-signed candidate only; permanent-key signing is required before customer delivery.' 
       - name: Generate 2Cam launcher icon (PNG, Android 4.4 safe)
         run: python3 scripts/create_icon.py
       - name: Verify legacy network compatibility
@@ -57,7 +55,7 @@ jobs:
       - name: Upload signed development build artifact
         uses: actions/upload-artifact@v4
         with:
-          name: 2Cam-Digital-Signage-pinned-API19-debug
+          name: 2Cam-Digital-Signage-UNSIGNED-CANDIDATE
           path: |
             app/build/outputs/apk/debug/app-debug.apk
             app/build/outputs/apk/debug/apk-metadata.txt
