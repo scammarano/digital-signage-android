@@ -118,25 +118,55 @@ class SettingsStore(private val context: Context) {
         val parent = if(externalCache && external!=null) external else context.filesDir
         return File(parent,"signage-cache-v1").also{ if(!it.exists()) it.mkdirs() }
     }
-    fun hasPin() = p.contains("pin_hash")
-    fun verifyPin(input:String): Boolean {
-        if(!hasPin()) return false
-        val salt=Base64.decode(p.getString("pin_salt", "")!!,Base64.NO_WRAP)
-        val actual=pinHash(input,salt)
-        val expected=Base64.decode(p.getString("pin_hash", "")!!,Base64.NO_WRAP)
-        return java.security.MessageDigest.isEqual(actual,expected)
+    private val pinSecret by lazy {SecureToken(context,"admin_pin_v2")}
+    fun hasPin() = p.contains("pin_mac_v2") || p.contains("pin_hash")
+    @Synchronized fun verifyPin(input:String):Boolean {
+        if(!hasPin())return false
+        val now=System.currentTimeMillis()
+        check(now>=p.getLong("pin_locked_until",0L)){"Demasiados intentos. Espera antes de reintentar"}
+        val valid=if(p.contains("pin_mac_v2")){
+            val secret=pinSecret.load()?:throw IllegalStateException("No se pudo abrir la clave del PIN en AndroidKeyStore")
+            val salt=Base64.decode(p.getString("pin_salt_v2","")!!,Base64.NO_WRAP)
+            val actual=pinMac(input,salt,secret)
+            java.security.MessageDigest.isEqual(actual,Base64.decode(p.getString("pin_mac_v2","")!!,Base64.NO_WRAP))
+        }else{
+            val salt=Base64.decode(p.getString("pin_salt", "")!!,Base64.NO_WRAP)
+            val actual=pinHash(input,salt)
+            val matched=java.security.MessageDigest.isEqual(actual,Base64.decode(p.getString("pin_hash", "")!!,Base64.NO_WRAP))
+            if(matched)setPin(input) // One successful legacy verification migrates the PIN without changing it.
+            matched
+        }
+        if(valid)p.edit().putInt("pin_failures",0).remove("pin_locked_until").apply()
+        else{
+            val failures=p.getInt("pin_failures",0)+1
+            val edit=p.edit().putInt("pin_failures",failures)
+            if(failures>=5)edit.putLong("pin_locked_until",now+minOf(300000L,30000L*(failures-4)))
+            edit.commit()
+        }
+        return valid
     }
-    fun setPin(pin:String){ require(pin.length>=6 && pin.all{it.isDigit()})
-        val salt=ByteArray(16); SecureRandom().nextBytes(salt)
-        p.edit().putString("pin_salt",Base64.encodeToString(salt,Base64.NO_WRAP))
-         .putString("pin_hash",Base64.encodeToString(pinHash(pin,salt),Base64.NO_WRAP)).apply()
+    @Synchronized fun setPin(pin:String){
+        require(pin.length>=6 && pin.all{it.isDigit()})
+        val secret=pinSecret.load()?:ByteArray(32).also{SecureRandom().nextBytes(it)}.joinToString(""){"%02x".format(it.toInt() and 255)}.also{pinSecret.save(it)}
+        val salt=ByteArray(16);SecureRandom().nextBytes(salt)
+        val mac=pinMac(pin,salt,secret)
+        check(p.edit().putString("pin_salt_v2",Base64.encodeToString(salt,Base64.NO_WRAP))
+            .putString("pin_mac_v2",Base64.encodeToString(mac,Base64.NO_WRAP))
+            .remove("pin_hash").remove("pin_salt").remove("pin_locked_until").putInt("pin_failures",0).commit())
+    }
+    private fun pinMac(input:String,salt:ByteArray,secret:String):ByteArray {
+        val key=ByteArray(secret.length/2){secret.substring(it*2,it*2+2).toInt(16).toByte()}
+        return javax.crypto.Mac.getInstance("HmacSHA256").run{
+            init(javax.crypto.spec.SecretKeySpec(key,"HmacSHA256"))
+            doFinal("2cam-admin-pin-v2".toByteArray(Charsets.UTF_8)+salt+input.toByteArray(Charsets.UTF_8))
+        }
     }
     private fun pinHash(pin:String,salt:ByteArray):ByteArray {
         val spec=PBEKeySpec(pin.toCharArray(),salt,120000,256)
         return try{ SecretKeyFactory.getInstance(if (Build.VERSION.SDK_INT >= 26) "PBKDF2WithHmacSHA256" else "PBKDF2WithHmacSHA1").generateSecret(spec).encoded } finally{spec.clearPassword()}
     }
     // Only allow-listed, non-secret options can be backed up or sent remotely.
-    val schema:org.json.JSONObject get()=org.json.JSONObject(context.assets.open("config-schema.json").bufferedReader().use{it.readText()})
+    val schema:org.json.JSONObject by lazy {org.json.JSONObject(context.assets.open("config-schema.json").bufferedReader().use{it.readText()})}
     fun schemaFields():List<org.json.JSONObject> {val a=schema.getJSONArray("fields");return (0 until a.length()).map{a.getJSONObject(it)}}
     fun publicSnapshot():org.json.JSONObject = org.json.JSONObject().apply {
         for(f in schemaFields()) {val k=f.getString("key");val d=f.get("default")
@@ -147,8 +177,23 @@ class SettingsStore(private val context: Context) {
             };put(k,value)
         }
     }
+    @Volatile private var catalogUntil=0L
+    private var catalogCache:org.json.JSONObject?=null
+    @Synchronized fun prepareFormData(){
+        schemaFields()
+        catalogCache=CacheManager(context,this).active()?.optJSONObject("playlist_catalog")
+        catalogUntil=android.os.SystemClock.elapsedRealtime()+5000L
+    }
+    fun activationError(mode:Int,snapshot:org.json.JSONObject=publicSnapshot()):String? =
+        ModeReadiness.error(snapshot,CacheManager(context,this).active()?.let{ManifestModel(it)},mode)
+    fun requireActivationChange(snapshot:org.json.JSONObject){
+        if(ModeReadiness.activationChanged(publicSnapshot(),snapshot)){
+            activationError(snapshot.getInt("primary_mode"),snapshot)?.let{throw IllegalArgumentException(it)}
+        }
+    }
     fun playlistChoices(def:org.json.JSONObject):List<Pair<Int,String>> {
-        val catalog=CacheManager(context,this).active()?.optJSONObject("playlist_catalog")
+        if(android.os.SystemClock.elapsedRealtime()>=catalogUntil)prepareFormData()
+        val catalog=catalogCache
         val out=mutableListOf(0 to (if(def.getString("key")=="signage_playlist_id")"Programación del portal" else "Sin asignar"))
         catalog?.keys()?.forEach{k->val p=catalog.optJSONObject(k);if(p!=null && p.optString("layout")==def.getString("layout"))out.add(p.getInt("id") to ("#${p.getInt("id")} · ${p.getString("name")}"))}
         val current=publicSnapshot().getInt(def.getString("key"))

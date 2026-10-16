@@ -163,20 +163,21 @@ class LocalAdminServer(private val context:Context,private val settings:Settings
                         else->o.put(k,params[k]?.toIntOrNull()?:-1)
                     }
                 }
-                settings.validateSettings(o);settings.backupSnapshot("local-web-before-save")
+                settings.validateSettings(o);settings.requireActivationChange(o);settings.backupSnapshot("local-web-before-save")
                 if(!settings.applySnapshot(o))throw IllegalStateException("No se pudo guardar");respond(c,303,"","Location: /\r\n");return
             }
             if(path=="/restore"){
                 val input=JSONObject(params["json"]?:"")
                 require(input.optString("format")=="digital-signage-settings"&&input.optInt("schema") in 1..2)
                 val o=settings.validateSettings(if(input.optInt("schema")==1)settings.migrateV1(input.getJSONObject("settings")) else input.getJSONObject("settings"))
+                settings.requireActivationChange(o)
                 settings.backupSnapshot("local-web-before-restore")
                 if(!settings.applySnapshot(o))throw IllegalStateException("No se pudo restaurar")
                 respond(c,303,"","Location: /\r\n");return
             }
         }
         respond(c,404,"Ruta no encontrada")
-      }catch(e:Exception){try{respond(c,400,"Solicitud inválida: ${e.javaClass.simpleName}")}catch(_:Exception){} }
+      }catch(e:Exception){try{respond(c,400,"Solicitud inválida: ${e.message?.take(250)?:e.javaClass.simpleName}")}catch(_:Exception){} }
     }}
     private fun page(content:String)="""<!doctype html><html lang='es'><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'><title>2Cam Digital Signage · Local</title><style>body{font:16px system-ui;background:#ecf1f7;color:#14243b;margin:0;padding:30px}main{max-width:740px;margin:auto;background:white;padding:24px;border-radius:12px;box-shadow:0 8px 30px #0002}label{display:block;margin:12px 0}input,textarea{padding:10px;border:1px solid #cbd5e1;border-radius:6px;max-width:100%;box-sizing:border-box}textarea{width:100%}input[type=checkbox]{accent-color:#07833c}select{max-width:100%;box-sizing:border-box;padding:10px;border:1px solid #cbd5e1;border-radius:6px}button{background:#174589;color:white;border:0;padding:10px 18px;border-radius:6px;cursor:pointer;margin:12px 0}form{border-bottom:1px solid #ddd;margin-bottom:20px}a{color:#174589}</style></head><body><main>$content</main></body></html>"""
     private fun respond(c:Socket,status:Int,body:String,extra:String="",type:String="text/plain; charset=utf-8") {

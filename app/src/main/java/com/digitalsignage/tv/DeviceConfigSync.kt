@@ -25,6 +25,7 @@ class DeviceConfigSync(
             while(keys.hasNext()){val k=keys.next();when(k){
                 "smart_app"->old.put(k,if(settings.primaryMode==4)"scoreboard" else "queue")
                 "smart_header_pct"->old.put(k,settings.smartHeaderPct)
+                "overlay_layout"->old.put(k,if(settings.overlayLayout=="side")"right" else settings.overlayLayout)
                 "primary_mode"->old.put(k,if(settings.primaryMode==4)3 else settings.primaryMode)
                 "enabled_modes"->old.put(k,(settings.enabledModes and 7) or (if(settings.enabledModes and 8!=0)4 else 0))
                 else->if(actual.has(k))old.put(k,actual.get(k))

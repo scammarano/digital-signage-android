@@ -25,6 +25,10 @@ import java.util.concurrent.Executors
 
 /** Opt-in experimental overlay. Not supported above secure/protected apps or external HDMI. */
 class OverlayService:Service(){
+    companion object {
+        const val ACTION_PREVIEW="com.digitalsignage.tv.PREVIEW_OVERLAY"
+        @Volatile var lastShownAt=0L;private set
+    }
     private val handler=Handler(Looper.getMainLooper());private val worker=Executors.newSingleThreadExecutor()
     private lateinit var settings:SettingsStore;private lateinit var cache:CacheManager
     private var wm:WindowManager?=null;private var current:View?=null;private var nextAdAt=0L;private var hideAt=0L
@@ -77,7 +81,10 @@ class OverlayService:Service(){
         handler.post(ticker)
     }
     override fun onBind(intent:Intent?):IBinder?=null
-    override fun onStartCommand(intent:Intent?,flags:Int,startId:Int):Int=START_STICKY
+    override fun onStartCommand(intent:Intent?,flags:Int,startId:Int):Int {
+        if(intent?.action==ACTION_PREVIEW)nextAdAt=System.currentTimeMillis()
+        return START_STICKY
+    }
     override fun onDestroy(){handler.removeCallbacks(ticker);hide();
         debugText?.let{try{wm?.removeView(it)}catch(_:Exception){}}
         debugText=null
@@ -88,6 +95,10 @@ class OverlayService:Service(){
         if(!AndroidCompat.canOverlay(this)){hide();stopSelf();return}
         val model=cache.active()?.let{ManifestModel(it)}?:return
         if(model.activeMode(settings)!=2){hide();stopSelf();return}
+        val readiness=ModeReadiness.error(settings.publicSnapshot(),model,2)
+        if(readiness!=null){
+            hide();DeviceDebug.record(this,DeviceLogs(this),"blocked",settings.remoteRevision,readiness)
+        }
         val now=System.currentTimeMillis()
         if(now-lastFetch>settings.syncMinutes*60000L&&!syncing){syncing=true;lastFetch=now
             worker.execute{
@@ -103,7 +114,8 @@ class OverlayService:Service(){
                 }catch(_:Exception){}finally{syncing=false}
             }
         }
-        if(current!=null){if(now>=hideAt)hide();return}
+        if(readiness!=null)return
+        if(current!=null){if(now>=hideAt)hide(true);return}
         // The current APK configuration owns Overlay policy independently of playlist layout.
         val interval=settings.overlayIntervalSec.toLong()*1000L
         if(nextAdAt==0L)nextAdAt=now+interval
@@ -144,14 +156,29 @@ class OverlayService:Service(){
             val attrs=WindowManager.LayoutParams(w,h,AndroidCompat.overlayWindowType,
               WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,PixelFormat.TRANSLUCENT).apply{this.gravity=gravity;this.alpha=settings.overlayOpacity/100f}
             val manager=wm?:return
-            manager.addView(frame,attrs);current=frame;frame.animate().alpha(1f).setDuration(500).start()
+            val offset=OverlayMotion.offset(layout,w,h)
+            frame.translationX=offset.first;frame.translationY=offset.second
+            manager.addView(frame,attrs);current=frame
+            frame.post{if(current===frame && frame.windowToken!=null)lastShownAt=System.currentTimeMillis()}
+            frame.animate().translationX(0f).translationY(0f).alpha(1f).setDuration(600)
+                .setInterpolator(android.view.animation.DecelerateInterpolator()).start()
             if(DeviceDebug.effective(this)!=settings.remoteRevision ||
                DeviceDebug.effectiveMode(this)!=2){
                 DeviceDebug.record(this,DeviceLogs(this),"effective",settings.remoteRevision,
                     "Publicidad Overlay mostrada en pantalla",2)
             }
-        }catch(_:Exception){hide()}
+        }catch(e:Exception){
+            DeviceDebug.record(this,DeviceLogs(this),"blocked",settings.remoteRevision,"Overlay: ${e.javaClass.simpleName} ${e.message?.take(120)}")
+            hide()
+        }
     }
-    private fun hide(){current?.let{try{wm?.removeView(it)}catch(_:Exception){}};current=null}
+    private fun hide(animated:Boolean=false){
+        val view=current?:return;current=null
+        val manager=wm?:return
+        fun remove(){try{manager.removeView(view)}catch(_:Exception){}}
+        if(!animated){view.animate().cancel();remove();return}
+        val offset=OverlayMotion.offset(settings.overlayLayout,view.width,view.height)
+        view.animate().translationX(offset.first).translationY(offset.second).alpha(0f).setDuration(350).withEndAction{remove()}.start()
+    }
 }
 

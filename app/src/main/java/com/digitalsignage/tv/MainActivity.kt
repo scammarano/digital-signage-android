@@ -70,6 +70,7 @@ class MainActivity : Activity() {
     private var lastLive=JSONObject()
     private var mode3Header:TextView?=null
     private var liveAdCycleStartedAt=0L
+    private var lastBlockedMode=""
     private var lastRenderSettings=""
     private var lastSmartApp=""
     private var lastSmartHeaderPct=0
@@ -235,6 +236,21 @@ class MainActivity : Activity() {
         val model=manifest
         if(model==null){showConnecting();return}
         val mode=model.activeMode(settings)
+        val modeError=ModeReadiness.error(settings.publicSnapshot(),model,mode)
+        if(modeError!=null){
+            if(lastBlockedMode!=modeError){
+                stopOverlay();deck?.clear();deck=null;stage=null;activeMode=0
+                val box=ScreenStyles.column(this)
+                box.addView(ScreenStyles.label(this,"Modo pendiente de configuración",25f))
+                box.addView(ScreenStyles.label(this,modeError,18f))
+                box.addView(ScreenStyles.button(this,"Configurar playlist / modo"){openSettings()})
+                box.addView(ScreenStyles.button(this,"Sincronizar catálogo"){sync()})
+                setContentView(box);lastBlockedMode=modeError
+                DeviceDebug.record(this,logs,"blocked",settings.remoteRevision,modeError)
+            }
+            return
+        }
+        lastBlockedMode=""
         val renderSettings=settings.publicSnapshot().toString()
         if(mode==activeMode && lastRenderSettings==renderSettings && (stage!=null || mode==2))return
         lastRenderSettings=renderSettings;liveAdCycleStartedAt=System.currentTimeMillis()
@@ -322,7 +338,7 @@ class MainActivity : Activity() {
         val box=ScreenStyles.column(this)
         box.addView(ScreenStyles.label(this,"Modo Overlay programado",30f))
         val available=AndroidCompat.canOverlay(this)
-        box.addView(ScreenStyles.label(this,if(available)"Overlay autorizado. Pulsa Inicio del control remoto para abrir otra app." else "Debes autorizar Mostrar sobre otras aplicaciones para usar Overlay."))
+        box.addView(ScreenStyles.label(this,if(available)"Overlay activo en segundo plano. Puedes elegir tu aplicación de video desde Inicio. Con Inicio automático activado, no necesitas abrir Digital Signage después de reiniciar el dispositivo." else "Debes autorizar Mostrar sobre otras aplicaciones para usar Overlay."))
         if(!available)box.addView(ScreenStyles.button(this,"Autorizar overlay"){
             if (android.os.Build.VERSION.SDK_INT >= 23) {
                 try { startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION,android.net.Uri.parse("package:$packageName"))) }

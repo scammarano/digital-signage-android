@@ -21,6 +21,8 @@ class SportsInstrumentation:Instrumentation(){
         }finally{c.disconnect()}
     }
     private fun exercise(){
+        exercisePin()
+        exerciseOverlay()
         val settings=SettingsStore(targetContext)
         settings.prepareProductionStartup()
         val savedSettings=settings.publicSnapshot()
@@ -58,6 +60,65 @@ class SportsInstrumentation:Instrumentation(){
         check(host.controls().length()==3);try{host.openPairing("home");error("Aceptó cuarto control")}catch(e:LocalSportsHost.Failure){check(e.status==409)}
         host.revoke(pair.getString("controlId"));check(host.controls().length()==2)
         runOnMainSync{activity.finish()}
+    }
+    private fun exercisePin(){
+        val settings=SettingsStore(targetContext)
+        val prefs=targetContext.getSharedPreferences("signage_settings_v1",0)
+        val pin="864209";val salt=ByteArray(16){it.toByte()}
+        val algorithm=if(android.os.Build.VERSION.SDK_INT>=26)"PBKDF2WithHmacSHA256" else "PBKDF2WithHmacSHA1"
+        val hash=javax.crypto.SecretKeyFactory.getInstance(algorithm).generateSecret(javax.crypto.spec.PBEKeySpec(pin.toCharArray(),salt,120000,256)).encoded
+        prefs.edit().remove("pin_mac_v2").putString("pin_salt",android.util.Base64.encodeToString(salt,2))
+            .putString("pin_hash",android.util.Base64.encodeToString(hash,2)).commit()
+        check(settings.verifyPin(pin)){"Legacy PIN migration failed"}
+        check(prefs.contains("pin_mac_v2")&&!prefs.contains("pin_hash")){"PIN not migrated"}
+        val start=android.os.SystemClock.elapsedRealtime()
+        check(settings.verifyPin(pin));val elapsed=android.os.SystemClock.elapsedRealtime()-start
+        check(!settings.verifyPin("111111")){"Wrong PIN accepted"}
+        for(i in 1..4)check(!settings.verifyPin("111111"))
+        try{settings.verifyPin(pin);error("PIN attempt lock bypassed")}catch(_:IllegalStateException){}
+        settings.setPin(pin);check(settings.verifyPin(pin))
+        println("PIN_MIGRATION_PASS subsequent_verification_ms=$elapsed")
+    }
+    private fun exerciseOverlay(){
+        val settings=SettingsStore(targetContext);settings.prepareProductionStartup()
+        val original=settings.publicSnapshot();val manual=settings.manualMode
+        val active=java.io.File(targetContext.filesDir,"signage-manifest-v1/active.json")
+        val originalManifest=if(active.isFile)active.readBytes() else null
+        val image=android.graphics.Bitmap.createBitmap(8,8,android.graphics.Bitmap.Config.ARGB_8888)
+        image.eraseColor(android.graphics.Color.GREEN)
+        val bytes=java.io.ByteArrayOutputStream().also{image.compress(android.graphics.Bitmap.CompressFormat.PNG,100,it)}.toByteArray();image.recycle()
+        val sha=java.security.MessageDigest.getInstance("SHA-256").digest(bytes).joinToString(""){"%02x".format(it.toInt() and 255)}
+        val file=CacheManager(targetContext,settings).mediaFile(sha);file.writeBytes(bytes)
+        try{
+            val config=JSONObject(original.toString()).put("enabled_modes",15).put("primary_mode",2).put("overlay_layout","bottom")
+                .put("overlay_playlist_bottom",91).put("debug_hud_enabled",false)
+            settings.applySnapshot(config);settings.manualMode=2
+            check(ModeReadiness.error(config,null,2)!=null)
+            val empty=ManifestModel(JSONObject().put("orientation","landscape"))
+            check(ModeReadiness.error(config,empty,2)!=null){"Missing playlist accepted"}
+            val item=JSONObject().put("mime","image/png").put("layout","bottom").put("sha256",sha).put("size",bytes.size).put("duration",3)
+            val list=JSONObject().put("id",91).put("layout","bottom").put("orientation","landscape").put("item_count",1).put("image_count",1)
+                .put("items",org.json.JSONArray().put(item))
+            val manifest=JSONObject().put("schema_version",3).put("orientation","landscape").put("playlist_catalog",JSONObject().put("91",list))
+            val model=ManifestModel(manifest)
+            check(ModeReadiness.error(config,model,2)==null)
+            list.put("image_count",0);check(ModeReadiness.error(config,model,2)!=null){"Overlay without image accepted"};list.put("image_count",1)
+            check(StartupPolicy.mode(settings,model)==2 && StartupPolicy.background(2))
+            check(!StartupPolicy.background(1) && !StartupPolicy.background(3))
+            check(OverlayMotion.offset("bottom",80,20).second>0 && OverlayMotion.offset("side",80,20).first>0)
+            check(OverlayMotion.offset("top",80,20).second<0 && OverlayMotion.offset("left",80,20).first<0)
+            active.parentFile?.mkdirs();active.writeText(manifest.toString())
+            val before=OverlayService.lastShownAt
+            runOnMainSync{AndroidCompat.startServiceCompat(targetContext,Intent(targetContext,OverlayService::class.java).setAction(OverlayService.ACTION_PREVIEW))}
+            for(i in 0 until 60){if(OverlayService.lastShownAt>before)break;Thread.sleep(100)}
+            check(OverlayService.lastShownAt>before){"Overlay window was not attached"}
+            println("OVERLAY_WINDOW_PASS BOOT_BACKGROUND_POLICY_PASS MODE_PLAYLIST_GATE_PASS")
+        }finally{
+            runOnMainSync{targetContext.stopService(Intent(targetContext,OverlayService::class.java))}
+            check(settings.applySnapshot(original));settings.manualMode=manual
+            if(originalManifest!=null)active.writeBytes(originalManifest)else active.delete()
+            file.delete()
+        }
     }
 }
 

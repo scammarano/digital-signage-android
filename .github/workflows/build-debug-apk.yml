@@ -26,6 +26,14 @@ jobs:
         uses: gradle/actions/setup-gradle@v4
         with:
           gradle-version: '8.9'
+      - uses: actions/cache@v4
+        with:
+          path: ~/.android/debug.keystore
+          key: digital-signage-sports-debug-v1
+      - name: Require original signing certificate
+        env:
+          SIGNAGE_DEBUG_KEYSTORE_B64: ${{ secrets.SIGNAGE_DEBUG_KEYSTORE_B64 }}
+        run: python3 scripts/require_signing_key.py
       - name: Generate 2Cam launcher icon (PNG, Android 4.4 safe)
         run: python3 scripts/create_icon.py
       - name: Verify legacy network compatibility
@@ -49,9 +57,10 @@ jobs:
       - name: Upload signed development build artifact
         uses: actions/upload-artifact@v4
         with:
-          name: 2Cam-Digital-Signage-v0.4.9-Medios-20-40-API19-debug
+          name: 2Cam-Digital-Signage-pinned-API19-debug
           path: |
             app/build/outputs/apk/debug/app-debug.apk
             app/build/outputs/apk/debug/apk-metadata.txt
             app/build/outputs/apk/debug/SHA256SUMS.txt
           if-no-files-found: error
+

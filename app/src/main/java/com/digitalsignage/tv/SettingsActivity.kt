@@ -16,6 +16,8 @@ import android.widget.TextView
 class SettingsActivity:Activity(){
     private lateinit var config:SettingsStore
     private lateinit var root:LinearLayout
+    private val authWorker=java.util.concurrent.Executors.newSingleThreadExecutor()
+    override fun onDestroy(){authWorker.shutdownNow();super.onDestroy()}
     override fun onCreate(savedInstanceState:Bundle?){super.onCreate(savedInstanceState);config=SettingsStore(this)
         if(config.hasPin())askPin(false)else askPin(true)
     }
@@ -26,8 +28,23 @@ class SettingsActivity:Activity(){
          .setPositiveButton(if(create)"Guardar" else "Entrar",null).create()
         dlg.setOnShowListener{dlg.getButton(AlertDialog.BUTTON_POSITIVE).setOnClickListener{
             val pin=field.text.toString()
-            if(create){if(pin.length<6||!pin.all{it.isDigit()}){field.error="Usa 6 dígitos como mínimo";return@setOnClickListener};config.setPin(pin);dlg.dismiss();showSettings()}
-            else if(config.verifyPin(pin)){dlg.dismiss();showSettings()}else{field.error="PIN incorrecto"}
+            if(pin.length<6||!pin.all{it.isDigit()}){field.error="Usa 6 dígitos como mínimo";return@setOnClickListener}
+            val button=dlg.getButton(AlertDialog.BUTTON_POSITIVE)
+            button.isEnabled=false;button.text="Verificando…";field.isEnabled=false
+            authWorker.execute{
+                val started=android.os.SystemClock.elapsedRealtime()
+                try{
+                    val valid=if(create){config.setPin(pin);true}else config.verifyPin(pin)
+                    if(valid)config.prepareFormData()
+                    DeviceLogs(this).record("info","settings_auth","Verificación administrativa completada","elapsed_ms=${android.os.SystemClock.elapsedRealtime()-started}")
+                    runOnUiThread{
+                        if(!isFinishing && !isDestroyed){
+                            if(valid){dlg.dismiss();showSettings()}
+                            else{field.error="PIN incorrecto";field.isEnabled=true;button.isEnabled=true;button.text="Entrar"}
+                        }
+                    }
+                }catch(e:Exception){runOnUiThread{if(!isFinishing){field.error=e.message?:"No se pudo verificar";field.isEnabled=true;button.isEnabled=true;button.text="Reintentar"}}}
+            }
         }};dlg.show()
     }
     private fun toggle(label:String,checked:Boolean,change:(Boolean)->Unit){
@@ -51,14 +68,17 @@ class SettingsActivity:Activity(){
         root.addView(ScreenStyles.label(this,"El botón verde indica el modo seleccionado.",15f))
         listOf("Automático (portal)" to 0,"Cartelera" to 1,"Overlay" to 2,"Turnos" to 3,"Marcador deportivo" to 4).forEach{ (title,value)->
             root.addView(ScreenStyles.button(this,title,config.manualMode==value){
-                config.manualMode=value
-                showSettings()
+                val error=if(value==0)null else config.activationError(value)
+                if(error!=null){AlertDialog.Builder(this).setTitle("No se puede activar el modo").setMessage(error).setPositiveButton("Aceptar",null).show()}
+                else{config.manualMode=value;showSettings()}
             })
         }
         root.addView(ScreenStyles.button(this,"Seleccionar modo local (para pruebas)"){
             val choices=arrayOf("Automático (según portal y horarios)","Cartelera","Overlay","Turnos","Marcador deportivo")
             AlertDialog.Builder(this).setTitle("Modo principal")
                 .setSingleChoiceItems(choices,config.manualMode){dialog,selected->
+                    val error=if(selected==0)null else config.activationError(selected)
+                    if(error!=null){android.widget.Toast.makeText(this,error,android.widget.Toast.LENGTH_LONG).show();return@setSingleChoiceItems}
                     config.manualMode=selected;dialog.dismiss()
                     AlertDialog.Builder(this).setMessage("Modo guardado. Vuelve al reproductor para aplicarlo.")
                         .setPositiveButton("Aceptar",null).show()
@@ -74,6 +94,14 @@ class SettingsActivity:Activity(){
         root.addView(ScreenStyles.button(this,"Diagnóstico y logs locales"){
             startActivity(Intent(this,DiagnosticsActivity::class.java))
         })
+        root.addView(ScreenStyles.button(this,"Probar Overlay ahora"){
+            val error=config.activationError(2)
+            when {
+                error!=null->AlertDialog.Builder(this).setTitle("Overlay pendiente").setMessage(error).setPositiveButton("Aceptar",null).show()
+                !AndroidCompat.canOverlay(this)->AlertDialog.Builder(this).setMessage("Autoriza la superposición Android antes de probar Overlay").setPositiveButton("Aceptar",null).show()
+                else->{config.manualMode=2;AndroidCompat.startServiceCompat(this,Intent(this,OverlayService::class.java).setAction(OverlayService.ACTION_PREVIEW))}
+            }
+        })
         root.addView(ScreenStyles.button(this,"Sports directo LAN · enlazar control"){
             startActivity(Intent(this,SportsActivity::class.java))
         })
@@ -82,7 +110,7 @@ class SettingsActivity:Activity(){
         for(def in config.schemaFields()){
             val key=def.getString("key");val label=def.getString("label");val section=def.getString("group")
             if(group!=section){root.addView(ScreenStyles.label(this,section,23f));group=section}
-            fun save(value:Any){val next=config.publicSnapshot().put(key,value);check(config.applySnapshot(next))}
+            fun save(value:Any){val next=config.validateSettings(config.publicSnapshot().put(key,value));config.requireActivationChange(next);check(config.applySnapshot(next))}
             when(def.getString("type")){
                 "bool"->toggle(label,snapshot.getBoolean(key)){save(it)}
                 "mask"->for(mode in 1..4){val bit=1 shl (mode-1);toggle(config.schema.getJSONObject("modes").getString(mode.toString()),snapshot.getInt(key) and bit!=0){enabled->

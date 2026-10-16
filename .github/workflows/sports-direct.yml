@@ -5,6 +5,7 @@ on:
   workflow_dispatch:
 permissions:
   contents: read
+  actions: read
 jobs:
   build-test:
     runs-on: ubuntu-latest
@@ -26,6 +27,10 @@ jobs:
         with:
           path: ~/.android/debug.keystore
           key: digital-signage-sports-debug-v1
+      - name: Require original signing certificate
+        env:
+          SIGNAGE_DEBUG_KEYSTORE_B64: ${{ secrets.SIGNAGE_DEBUG_KEYSTORE_B64 }}
+        run: python3 scripts/require_signing_key.py
       - run: python3 scripts/create_icon.py
       - name: Assert DEBUG HUD and runtime ACK are wired
         run: |
@@ -46,16 +51,22 @@ jobs:
       - name: Package Fire APK
         run: |
           mkdir delivery
-          cp app/build/outputs/apk/debug/app-debug.apk delivery/2Cam-Digital-Signage-v0.4.13-debug-four-modes.apk
+          cp app/build/outputs/apk/debug/app-debug.apk delivery/2Cam-Digital-Signage-v0.4.14-debug-startup.apk
           cp docs/GUIA_TRANSICIONES_PLAYLISTS_v0412.md delivery/GUIA_TRANSICIONES.md
           cp DEBUG_ACK_LEEME.md delivery/DIAGNOSTICO.md
           cd delivery
           sha256sum *.apk > SHA256SUMS.txt
       - uses: actions/upload-artifact@v4
         with:
-          name: 2cam-fire-0.4.13-debug-four-modes-APK
+          name: 2cam-fire-0.4.14-debug-startup-APK
           path: delivery/
           retention-days: 30
+      - name: Download previous APK for in-place upgrade verification
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          gh api repos/scammarano/digital-signage-android/actions/artifacts/12021253415/zip > /tmp/previous-apk.zip
+          python3 -c 'import zipfile;z=zipfile.ZipFile("/tmp/previous-apk.zip");p=next(p for p in z.namelist() if p.endswith(".apk"));open("/tmp/previous-apk.apk","wb").write(z.read(p))'
       - name: Enable KVM
         run: |
           echo 'KERNEL=="kvm", GROUP="kvm", MODE="0666", OPTIONS+="static_node=kvm"' | sudo tee /etc/udev/rules.d/99-kvm4all.rules
@@ -69,7 +80,12 @@ jobs:
           profile: Nexus 6
           disable-animations: true
           script: |
+            adb install -r /tmp/previous-apk.apk
+            adb shell run-as com.digitalsignage.tv mkdir -p files
+            adb shell "run-as com.digitalsignage.tv sh -c 'echo retained > files/upgrade-sentinel.txt'"
             adb install -r app/build/outputs/apk/debug/app-debug.apk
+            adb shell run-as com.digitalsignage.tv cat files/upgrade-sentinel.txt | grep -q retained
+            echo IN_PLACE_UPGRADE_0413_TO_0414_PASS
             adb install -r app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
             adb shell am instrument -w com.digitalsignage.tv.test/com.digitalsignage.tv.SportsInstrumentation | tee /tmp/fire-sports-test.txt
             grep -q SPORTS_FIRE_DIRECT_PASS /tmp/fire-sports-test.txt
