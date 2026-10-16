@@ -80,7 +80,7 @@ class DeviceDebugHud(private val activity:Activity) {
         }.also{view=it}
         if(tv.parent !== content){
             (tv.parent as? ViewGroup)?.removeView(tv)
-            content.addView(tv,FrameLayout.LayoutParams(-1,-2,Gravity.TOP))
+            content.addView(tv,FrameLayout.LayoutParams(-1,-2,Gravity.TOP).apply{val dm=activity.resources.displayMetrics;setMargins(dm.widthPixels/20,dm.heightPixels/20,dm.widthPixels/20,0)})
         }
         tv.text=text
         tv.bringToFront()

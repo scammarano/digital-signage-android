@@ -152,7 +152,9 @@ class SettingsStore(private val context: Context) {
         val catalog=CacheManager(context,this).active()?.optJSONObject("playlist_catalog")
         val out=mutableListOf(0 to (if(def.getString("key")=="signage_playlist_id")"Programación del portal" else "Sin asignar"))
         catalog?.keys()?.forEach{k->val p=catalog.optJSONObject(k);if(p!=null && p.optString("layout")==def.getString("layout"))out.add(p.getInt("id") to ("#${p.getInt("id")} · ${p.getString("name")}"))}
-        return out
+        val current=publicSnapshot().getInt(def.getString("key"))
+        if(current>0 && out.none{it.first==current})out.add(current to "#$current · No disponible")
+        return out.sortedBy{it.first}
     }
     fun settingInt(k:String)=publicSnapshot().getInt(k)
     fun settingString(k:String)=publicSnapshot().getString(k)
@@ -189,7 +191,7 @@ class SettingsStore(private val context: Context) {
         for(f in schemaFields()) {val k=f.getString("key");val v=full.get(k)
             when(f.getString("type")) {
                 "bool"->require(v is Boolean){"Tipo inválido: $k"}
-                "enum"->require(f.getJSONObject("options").has(v.toString())){"Opción inválida: $k"}
+                "enum"->require((if(f.get("default") is Int)v is Int else v is String) && f.getJSONObject("options").has(v.toString())){"Opción inválida: $k"}
                 else->require(v is Int && v in f.getInt("min")..f.getInt("max")){"Fuera de rango: $k"}
             }
         }

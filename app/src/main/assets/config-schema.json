@@ -321,6 +321,24 @@
       "type": "bool"
     },
     {
+      "key": "queue_ad_interval_sec",
+      "label": "Intervalo de publicidad a pantalla completa (segundos)",
+      "group": "Turnos",
+      "default": 900,
+      "type": "int",
+      "min": 60,
+      "max": 86400
+    },
+    {
+      "key": "queue_ad_duration_sec",
+      "label": "Duración de publicidad a pantalla completa (segundos)",
+      "group": "Turnos",
+      "default": 12,
+      "type": "int",
+      "min": 3,
+      "max": 120
+    },
+    {
       "key": "scoreboard_layout",
       "label": "Diseño publicitario",
       "group": "Marcador deportivo",
@@ -412,6 +430,24 @@
         "portal": "Aplicación externa / portal",
         "lan": "Sports directo en LAN"
       }
+    },
+    {
+      "key": "scoreboard_ad_interval_sec",
+      "label": "Intervalo de publicidad a pantalla completa (segundos)",
+      "group": "Marcador deportivo",
+      "default": 900,
+      "type": "int",
+      "min": 60,
+      "max": 86400
+    },
+    {
+      "key": "scoreboard_ad_duration_sec",
+      "label": "Duración de publicidad a pantalla completa (segundos)",
+      "group": "Marcador deportivo",
+      "default": 12,
+      "type": "int",
+      "min": 3,
+      "max": 120
     },
     {
       "key": "smart_poll_sec",

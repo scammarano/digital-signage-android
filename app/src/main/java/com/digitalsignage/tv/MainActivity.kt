@@ -69,6 +69,8 @@ class MainActivity : Activity() {
     private var syncInFlight=false
     private var lastLive=JSONObject()
     private var mode3Header:TextView?=null
+    private var liveAdCycleStartedAt=0L
+    private var lastRenderSettings=""
     private var lastSmartApp=""
     private var lastSmartHeaderPct=0
     private var lastCallSequence=-1L
@@ -233,9 +235,9 @@ class MainActivity : Activity() {
         val model=manifest
         if(model==null){showConnecting();return}
         val mode=model.activeMode(settings)
-        if(mode==activeMode && stage!=null && (mode !in 3..4 ||
-           (lastSmartApp==settings.modeLayout(mode) && lastSmartHeaderPct==0 && playlistIdentity.startsWith("${mode}:${settings.publicSnapshot()}:"))))return
-        if(mode in 3..4){lastSmartApp=settings.modeLayout(mode);lastSmartHeaderPct=0}
+        val renderSettings=settings.publicSnapshot().toString()
+        if(mode==activeMode && lastRenderSettings==renderSettings && (stage!=null || mode==2))return
+        lastRenderSettings=renderSettings;liveAdCycleStartedAt=System.currentTimeMillis()
         activeMode=mode;playlistIdentity="";deck?.clear();deck=null;stage=null;mode3Header=null
         when(mode){1->showSignage(false);2->showOverlayControl();3,4->showSignage(true);else->showDisabled()}
         if(mode!=lastSelectedMode){
@@ -345,7 +347,7 @@ class MainActivity : Activity() {
         val fingerprint="${model.activeMode(settings)}:${settings.publicSnapshot()}:${model.json.optString("orientation")}:${list.toString()}"
         if(fingerprint==playlistIdentity)return
         playlistIdentity=fingerprint;entries=list;index=0;deck?.clear()
-        stage?.visibility=if(entries.length()==0 && activeMode in 3..4 && settings.modeLayout(activeMode)=="fullscreen")View.GONE else View.VISIBLE
+        stage?.visibility=if(activeMode in 3..4 && settings.modeLayout(activeMode)=="fullscreen")View.GONE else View.VISIBLE
         if(entries.length()>0)advance() else status?.apply{visibility=View.VISIBLE;text="${DeviceDebug.mode(activeMode)} · Sin playlist compatible para ${settings.modeLayout(activeMode)}"}
     }
     private fun advance(){
@@ -368,7 +370,16 @@ class MainActivity : Activity() {
             ui.postDelayed({advance()},2500)
         }
     }
+    private fun refreshLiveAdvertising(){
+        if(activeMode !in 3..4 || settings.modeLayout(activeMode)!="fullscreen")return
+        val prefix=if(activeMode==4)"scoreboard" else "queue"
+        val interval=settings.settingInt(prefix+"_ad_interval_sec")*1000L
+        val duration=settings.settingInt(prefix+"_ad_duration_sec")*1000L
+        val elapsed=System.currentTimeMillis()-liveAdCycleStartedAt
+        stage?.visibility=if(entries.length()>0 && elapsed%(interval+duration)>=interval)View.VISIBLE else View.GONE
+    }
     private fun pulse(){
+        refreshLiveAdvertising()
         refreshDebugHud()
         pollDebugConfig()
         if(settings.diagnosticMode)return
@@ -376,7 +387,7 @@ class MainActivity : Activity() {
         val model=manifest
         if(model!=null){
             val nextMode=model.activeMode(settings)
-            if(nextMode!=activeMode)showMode() else if(activeMode in listOf(1,3,4))selectPlaylist()
+            showMode();if(activeMode in listOf(1,3,4))selectPlaylist()
         }
 
         // During an active test, query for changed playlist definitions every ~15s.
