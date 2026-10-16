@@ -99,7 +99,7 @@ class SettingsActivity:Activity(){
             when {
                 error!=null->AlertDialog.Builder(this).setTitle("Overlay pendiente").setMessage(error).setPositiveButton("Aceptar",null).show()
                 !AndroidCompat.canOverlay(this)->AlertDialog.Builder(this).setMessage("Autoriza la superposición Android antes de probar Overlay").setPositiveButton("Aceptar",null).show()
-                else->{config.manualMode=2;AndroidCompat.startServiceCompat(this,Intent(this,OverlayService::class.java).setAction(OverlayService.ACTION_PREVIEW))}
+                else->{AndroidCompat.startServiceCompat(this,Intent(this,OverlayService::class.java).setAction(OverlayService.ACTION_PREVIEW))}
             }
         })
         root.addView(ScreenStyles.button(this,"Sports directo LAN · enlazar control"){

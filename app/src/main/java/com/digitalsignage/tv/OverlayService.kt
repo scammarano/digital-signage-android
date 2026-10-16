@@ -32,6 +32,7 @@ class OverlayService:Service(){
     private val handler=Handler(Looper.getMainLooper());private val worker=Executors.newSingleThreadExecutor()
     private lateinit var settings:SettingsStore;private lateinit var cache:CacheManager
     private var wm:WindowManager?=null;private var current:View?=null;private var nextAdAt=0L;private var hideAt=0L
+    private var previewUntil=0L
     private var lastFetch=0L;private var index=0;private var syncing=false
     private var lastDebugConfigPoll=0L
     private var debugText:TextView?=null
@@ -82,7 +83,10 @@ class OverlayService:Service(){
     }
     override fun onBind(intent:Intent?):IBinder?=null
     override fun onStartCommand(intent:Intent?,flags:Int,startId:Int):Int {
-        if(intent?.action==ACTION_PREVIEW)nextAdAt=System.currentTimeMillis()
+        if(intent?.action==ACTION_PREVIEW){
+            nextAdAt=System.currentTimeMillis()
+            previewUntil=nextAdAt+settings.overlayDurationSec*1000L+2000L
+        }
         return START_STICKY
     }
     override fun onDestroy(){handler.removeCallbacks(ticker);hide();
@@ -94,7 +98,7 @@ class OverlayService:Service(){
         pollDebugConfig()
         if(!AndroidCompat.canOverlay(this)){hide();stopSelf();return}
         val model=cache.active()?.let{ManifestModel(it)}?:return
-        if(model.activeMode(settings)!=2){hide();stopSelf();return}
+        if(model.activeMode(settings)!=2 && System.currentTimeMillis()>=previewUntil){hide();stopSelf();return}
         val readiness=ModeReadiness.error(settings.publicSnapshot(),model,2)
         if(readiness!=null){
             hide();DeviceDebug.record(this,DeviceLogs(this),"blocked",settings.remoteRevision,readiness)

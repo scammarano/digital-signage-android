@@ -10,8 +10,9 @@ import services.twocam.sportscore.LocalSportsHost
 
 /** API22 real: servidor dentro de APK, sin Node ni computadora como autoridad. */
 class SportsInstrumentation:Instrumentation(){
+    private var pinVerifyMs=-1L
     override fun onCreate(arguments:Bundle?){super.onCreate(arguments);start()}
-    override fun onStart(){val result=Bundle();try{exercise();result.putString("stream","SPORTS_FIRE_DIRECT_PASS\n");finish(Activity.RESULT_OK,result)}catch(e:Throwable){result.putString("stream","SPORTS_FIRE_DIRECT_FAIL ${e.javaClass.simpleName}: ${e.message}\n");finish(Activity.RESULT_CANCELED,result)}}
+    override fun onStart(){val result=Bundle();try{exercise();result.putString("stream","SPORTS_FIRE_DIRECT_PASS\nPIN_MIGRATION_PASS subsequent_verification_ms=$pinVerifyMs\nOVERLAY_WINDOW_PASS BOOT_BACKGROUND_POLICY_PASS MODE_PLAYLIST_GATE_PASS\n");finish(Activity.RESULT_OK,result)}catch(e:Throwable){result.putString("stream","SPORTS_FIRE_DIRECT_FAIL ${e.javaClass.simpleName}: ${e.message}\n");finish(Activity.RESULT_CANCELED,result)}}
     private fun api(method:String,path:String,token:String?=null,body:JSONObject?=null,key:String?=null):JSONObject {
         val c=java.net.URL(SportsRuntime.address+"/api/v1"+path).openConnection() as java.net.HttpURLConnection
         c.connectTimeout=4000;c.readTimeout=4000;c.requestMethod=method
@@ -72,7 +73,7 @@ class SportsInstrumentation:Instrumentation(){
         check(settings.verifyPin(pin)){"Legacy PIN migration failed"}
         check(prefs.contains("pin_mac_v2")&&!prefs.contains("pin_hash")){"PIN not migrated"}
         val start=android.os.SystemClock.elapsedRealtime()
-        check(settings.verifyPin(pin));val elapsed=android.os.SystemClock.elapsedRealtime()-start
+        check(settings.verifyPin(pin));val elapsed=android.os.SystemClock.elapsedRealtime()-start;pinVerifyMs=elapsed
         check(!settings.verifyPin("111111")){"Wrong PIN accepted"}
         for(i in 1..4)check(!settings.verifyPin("111111"))
         try{settings.verifyPin(pin);error("PIN attempt lock bypassed")}catch(_:IllegalStateException){}
@@ -113,10 +114,12 @@ class SportsInstrumentation:Instrumentation(){
             check(OverlayMotion.offset("bottom",80,20).second>0 && OverlayMotion.offset("side",80,20).first>0)
             check(OverlayMotion.offset("top",80,20).second<0 && OverlayMotion.offset("left",80,20).first<0)
             active.parentFile?.mkdirs();active.writeText(manifest.toString())
+            settings.applySnapshot(JSONObject(config.toString()).put("primary_mode",1));settings.manualMode=0
             val before=OverlayService.lastShownAt
             runOnMainSync{AndroidCompat.startServiceCompat(targetContext,Intent(targetContext,OverlayService::class.java).setAction(OverlayService.ACTION_PREVIEW))}
             for(i in 0 until 60){if(OverlayService.lastShownAt>before)break;Thread.sleep(100)}
             check(OverlayService.lastShownAt>before){"Overlay window was not attached"}
+            check(settings.primaryMode==1 && settings.manualMode==0){"Preview changed saved mode"}
             println("OVERLAY_WINDOW_PASS BOOT_BACKGROUND_POLICY_PASS MODE_PLAYLIST_GATE_PASS")
         }finally{
             runOnMainSync{targetContext.stopService(Intent(targetContext,OverlayService::class.java))}
