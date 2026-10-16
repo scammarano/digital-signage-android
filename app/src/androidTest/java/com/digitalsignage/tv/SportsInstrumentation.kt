@@ -21,6 +21,28 @@ class SportsInstrumentation:Instrumentation(){
         }finally{c.disconnect()}
     }
     private fun exercise(){
+        val settings=SettingsStore(targetContext)
+        settings.prepareProductionStartup()
+        val savedSettings=settings.publicSnapshot()
+        try {
+            val values=settings.publicSnapshot().put("enabled_modes",15).put("primary_mode",4)
+                .put("scoreboard_layout","bottom").put("scoreboard_playlist_bottom",42)
+            check(settings.applySnapshot(values))
+            check(settings.primaryMode==4 && settings.playlistId(4)==42)
+            val model=ManifestModel(JSONObject().put("orientation","landscape")
+                .put("fallback",JSONObject().put("items",org.json.JSONArray().put(JSONObject().put("name","CARTELERA")))))
+            check(model.entries(settings,3).length()==0){"Turnos inherited Cartelera"}
+            check(model.entries(settings,4).length()==0){"Marcador inherited Cartelera"}
+            val catalog=JSONObject().put("42",JSONObject().put("layout","bottom").put("orientation","landscape")
+                .put("items",org.json.JSONArray().put(JSONObject().put("name","MARCADOR"))))
+            model.json.put("playlist_catalog",catalog)
+            check(model.entries(settings,4).getJSONObject(0).getString("name")=="MARCADOR")
+            settings.applySnapshot(settings.publicSnapshot().put("scoreboard_layout","side"))
+            check(model.entries(settings,4).length()==0){"Different geometry inherited bottom playlist"}
+            try{settings.validateSettings(settings.publicSnapshot().put("overlay_opacity",101));error("Invalid opacity accepted")}catch(_:IllegalArgumentException){}
+            val migrated=settings.migrateV1(JSONObject().put("primary_mode",3).put("enabled_modes",7).put("smart_app","scoreboard"))
+            check(migrated.getInt("primary_mode")==4 && migrated.getInt("enabled_modes")==15)
+        } finally {check(settings.applySnapshot(savedSettings));settings.manualMode=0}
         val activity=startActivitySync(Intent(targetContext,SportsActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) as SportsActivity
         val host=SportsRuntime.host(targetContext);host.configure("Fire de prueba","Pista API22","Verde","Azul",RacketRules.standard("padel",3,"star",6,false),0)
         check(SportsRuntime.address.startsWith("http://")){SportsRuntime.error}
@@ -38,3 +60,4 @@ class SportsInstrumentation:Instrumentation(){
         runOnMainSync{activity.finish()}
     }
 }
+

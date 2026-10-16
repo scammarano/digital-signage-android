@@ -1,0 +1,450 @@
+{
+  "schema": 2,
+  "modes": {
+    "1": "Cartelera",
+    "2": "Overlay",
+    "3": "Turnos",
+    "4": "Marcador deportivo"
+  },
+  "layouts": {
+    "fullscreen": "Pantalla completa",
+    "bottom": "Franja inferior",
+    "side": "Franja lateral derecha",
+    "half_horizontal": "Media pantalla horizontal",
+    "half_vertical": "Media pantalla vertical"
+  },
+  "fields": [
+    {
+      "key": "debug_hud_enabled",
+      "label": "Mostrar HUD DEBUG",
+      "group": "Diagnóstico",
+      "default": true,
+      "type": "bool"
+    },
+    {
+      "key": "auto_start",
+      "label": "Inicio automático",
+      "group": "General",
+      "default": true,
+      "type": "bool"
+    },
+    {
+      "key": "splash",
+      "label": "Mostrar logo al iniciar",
+      "group": "General",
+      "default": true,
+      "type": "bool"
+    },
+    {
+      "key": "offline_playback",
+      "label": "Reproducir sin Internet",
+      "group": "General",
+      "default": true,
+      "type": "bool"
+    },
+    {
+      "key": "external_cache",
+      "label": "Caché externa privada",
+      "group": "General",
+      "default": false,
+      "type": "bool"
+    },
+    {
+      "key": "sync_minutes",
+      "label": "Sincronización (minutos)",
+      "group": "General",
+      "default": 1,
+      "type": "int",
+      "min": 1,
+      "max": 60
+    },
+    {
+      "key": "cache_mb",
+      "label": "Límite de caché (MB)",
+      "group": "General",
+      "default": 256,
+      "type": "int",
+      "min": 128,
+      "max": 16384
+    },
+    {
+      "key": "enabled_modes",
+      "label": "Modos habilitados",
+      "group": "General",
+      "default": 15,
+      "type": "mask",
+      "min": 1,
+      "max": 15
+    },
+    {
+      "key": "primary_mode",
+      "label": "Modo principal",
+      "group": "General",
+      "default": 1,
+      "type": "enum",
+      "options": {
+        "1": "Cartelera",
+        "2": "Overlay",
+        "3": "Turnos",
+        "4": "Marcador deportivo"
+      }
+    },
+    {
+      "key": "video_audio",
+      "label": "Audio de videos",
+      "group": "Cartelera",
+      "default": true,
+      "type": "bool"
+    },
+    {
+      "key": "signage_show_hud",
+      "label": "Mostrar indicador de contenido",
+      "group": "Cartelera",
+      "default": true,
+      "type": "bool"
+    },
+    {
+      "key": "signage_hud_seconds",
+      "label": "Duración del indicador (segundos)",
+      "group": "Cartelera",
+      "default": 10,
+      "type": "int",
+      "min": 0,
+      "max": 60
+    },
+    {
+      "key": "signage_playlist_id",
+      "label": "Playlist de Cartelera",
+      "group": "Cartelera",
+      "default": 0,
+      "type": "playlist",
+      "min": 0,
+      "max": 2147483647,
+      "layout": "fullscreen"
+    },
+    {
+      "key": "overlay_layout",
+      "label": "Diseño publicitario",
+      "group": "Overlay",
+      "default": "bottom",
+      "type": "enum",
+      "options": {
+        "fullscreen": "Pantalla completa",
+        "bottom": "Franja inferior",
+        "side": "Franja lateral derecha",
+        "half_horizontal": "Media pantalla horizontal",
+        "half_vertical": "Media pantalla vertical"
+      }
+    },
+    {
+      "key": "overlay_playlist_fullscreen",
+      "label": "Playlist · Pantalla completa",
+      "group": "Overlay",
+      "default": 0,
+      "type": "playlist",
+      "min": 0,
+      "max": 2147483647,
+      "layout": "fullscreen"
+    },
+    {
+      "key": "overlay_playlist_bottom",
+      "label": "Playlist · Franja inferior",
+      "group": "Overlay",
+      "default": 0,
+      "type": "playlist",
+      "min": 0,
+      "max": 2147483647,
+      "layout": "bottom"
+    },
+    {
+      "key": "overlay_playlist_side",
+      "label": "Playlist · Franja lateral derecha",
+      "group": "Overlay",
+      "default": 0,
+      "type": "playlist",
+      "min": 0,
+      "max": 2147483647,
+      "layout": "side"
+    },
+    {
+      "key": "overlay_playlist_half_horizontal",
+      "label": "Playlist · Media pantalla horizontal",
+      "group": "Overlay",
+      "default": 0,
+      "type": "playlist",
+      "min": 0,
+      "max": 2147483647,
+      "layout": "half_horizontal"
+    },
+    {
+      "key": "overlay_playlist_half_vertical",
+      "label": "Playlist · Media pantalla vertical",
+      "group": "Overlay",
+      "default": 0,
+      "type": "playlist",
+      "min": 0,
+      "max": 2147483647,
+      "layout": "half_vertical"
+    },
+    {
+      "key": "overlay_width_pct",
+      "label": "Ancho de franja lateral (%)",
+      "group": "Overlay",
+      "default": 40,
+      "type": "int",
+      "min": 15,
+      "max": 100
+    },
+    {
+      "key": "overlay_height_pct",
+      "label": "Alto de franja inferior (%)",
+      "group": "Overlay",
+      "default": 20,
+      "type": "int",
+      "min": 10,
+      "max": 100
+    },
+    {
+      "key": "overlay_opacity",
+      "label": "Opacidad (%)",
+      "group": "Overlay",
+      "default": 90,
+      "type": "int",
+      "min": 40,
+      "max": 100
+    },
+    {
+      "key": "overlay_interval_sec",
+      "label": "Intervalo (segundos)",
+      "group": "Overlay",
+      "default": 900,
+      "type": "int",
+      "min": 60,
+      "max": 86400
+    },
+    {
+      "key": "overlay_duration_sec",
+      "label": "Duración visible (segundos)",
+      "group": "Overlay",
+      "default": 12,
+      "type": "int",
+      "min": 3,
+      "max": 120
+    },
+    {
+      "key": "queue_layout",
+      "label": "Diseño publicitario",
+      "group": "Turnos",
+      "default": "bottom",
+      "type": "enum",
+      "options": {
+        "fullscreen": "Pantalla completa",
+        "bottom": "Franja inferior",
+        "side": "Franja lateral derecha",
+        "half_horizontal": "Media pantalla horizontal",
+        "half_vertical": "Media pantalla vertical"
+      }
+    },
+    {
+      "key": "queue_playlist_fullscreen",
+      "label": "Playlist · Pantalla completa",
+      "group": "Turnos",
+      "default": 0,
+      "type": "playlist",
+      "min": 0,
+      "max": 2147483647,
+      "layout": "fullscreen"
+    },
+    {
+      "key": "queue_playlist_bottom",
+      "label": "Playlist · Franja inferior",
+      "group": "Turnos",
+      "default": 0,
+      "type": "playlist",
+      "min": 0,
+      "max": 2147483647,
+      "layout": "bottom"
+    },
+    {
+      "key": "queue_playlist_side",
+      "label": "Playlist · Franja lateral derecha",
+      "group": "Turnos",
+      "default": 0,
+      "type": "playlist",
+      "min": 0,
+      "max": 2147483647,
+      "layout": "side"
+    },
+    {
+      "key": "queue_playlist_half_horizontal",
+      "label": "Playlist · Media pantalla horizontal",
+      "group": "Turnos",
+      "default": 0,
+      "type": "playlist",
+      "min": 0,
+      "max": 2147483647,
+      "layout": "half_horizontal"
+    },
+    {
+      "key": "queue_playlist_half_vertical",
+      "label": "Playlist · Media pantalla vertical",
+      "group": "Turnos",
+      "default": 0,
+      "type": "playlist",
+      "min": 0,
+      "max": 2147483647,
+      "layout": "half_vertical"
+    },
+    {
+      "key": "queue_width_pct",
+      "label": "Ancho de franja lateral (%)",
+      "group": "Turnos",
+      "default": 40,
+      "type": "int",
+      "min": 15,
+      "max": 80
+    },
+    {
+      "key": "queue_height_pct",
+      "label": "Alto de franja inferior (%)",
+      "group": "Turnos",
+      "default": 20,
+      "type": "int",
+      "min": 10,
+      "max": 80
+    },
+    {
+      "key": "smart_sound",
+      "label": "Aviso sonoro al llamar turno",
+      "group": "Turnos",
+      "default": false,
+      "type": "bool"
+    },
+    {
+      "key": "scoreboard_layout",
+      "label": "Diseño publicitario",
+      "group": "Marcador deportivo",
+      "default": "bottom",
+      "type": "enum",
+      "options": {
+        "fullscreen": "Pantalla completa",
+        "bottom": "Franja inferior",
+        "side": "Franja lateral derecha",
+        "half_horizontal": "Media pantalla horizontal",
+        "half_vertical": "Media pantalla vertical"
+      }
+    },
+    {
+      "key": "scoreboard_playlist_fullscreen",
+      "label": "Playlist · Pantalla completa",
+      "group": "Marcador deportivo",
+      "default": 0,
+      "type": "playlist",
+      "min": 0,
+      "max": 2147483647,
+      "layout": "fullscreen"
+    },
+    {
+      "key": "scoreboard_playlist_bottom",
+      "label": "Playlist · Franja inferior",
+      "group": "Marcador deportivo",
+      "default": 0,
+      "type": "playlist",
+      "min": 0,
+      "max": 2147483647,
+      "layout": "bottom"
+    },
+    {
+      "key": "scoreboard_playlist_side",
+      "label": "Playlist · Franja lateral derecha",
+      "group": "Marcador deportivo",
+      "default": 0,
+      "type": "playlist",
+      "min": 0,
+      "max": 2147483647,
+      "layout": "side"
+    },
+    {
+      "key": "scoreboard_playlist_half_horizontal",
+      "label": "Playlist · Media pantalla horizontal",
+      "group": "Marcador deportivo",
+      "default": 0,
+      "type": "playlist",
+      "min": 0,
+      "max": 2147483647,
+      "layout": "half_horizontal"
+    },
+    {
+      "key": "scoreboard_playlist_half_vertical",
+      "label": "Playlist · Media pantalla vertical",
+      "group": "Marcador deportivo",
+      "default": 0,
+      "type": "playlist",
+      "min": 0,
+      "max": 2147483647,
+      "layout": "half_vertical"
+    },
+    {
+      "key": "scoreboard_width_pct",
+      "label": "Ancho de franja lateral (%)",
+      "group": "Marcador deportivo",
+      "default": 40,
+      "type": "int",
+      "min": 15,
+      "max": 80
+    },
+    {
+      "key": "scoreboard_height_pct",
+      "label": "Alto de franja inferior (%)",
+      "group": "Marcador deportivo",
+      "default": 20,
+      "type": "int",
+      "min": 10,
+      "max": 80
+    },
+    {
+      "key": "scoreboard_source",
+      "label": "Origen del marcador",
+      "group": "Marcador deportivo",
+      "default": "portal",
+      "type": "enum",
+      "options": {
+        "portal": "Aplicación externa / portal",
+        "lan": "Sports directo en LAN"
+      }
+    },
+    {
+      "key": "smart_poll_sec",
+      "label": "Consulta al portal (segundos)",
+      "group": "Conexión Turnos / Marcador",
+      "default": 5,
+      "type": "int",
+      "min": 1,
+      "max": 120
+    },
+    {
+      "key": "update_policy",
+      "label": "Política de actualización",
+      "group": "Actualizaciones",
+      "default": 2,
+      "type": "enum",
+      "options": {
+        "0": "Manual",
+        "1": "Avisar",
+        "2": "Descargar y solicitar instalación"
+      }
+    },
+    {
+      "key": "update_channel",
+      "label": "Canal de actualización",
+      "group": "Actualizaciones",
+      "default": "debug",
+      "type": "enum",
+      "options": {
+        "stable": "Estable",
+        "beta": "Beta",
+        "debug": "Pruebas"
+      }
+    }
+  ]
+}

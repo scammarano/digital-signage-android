@@ -72,7 +72,7 @@ class LocalAdminServer(private val context:Context,private val settings:Settings
         val raw=Regex("(?:^|;\\s*)DSLAN=([0-9a-f]{48})").find(cookie?:"")?.groupValues?.get(1)?:return false
         return sessionExpiry>System.currentTimeMillis() && MessageDigest.isEqual(sha(raw).toByteArray(),sessionHash.toByteArray())
     }
-    private fun form(body:String):Map<String,String> = body.split('&').take(45).filter{it.contains('=')}.associate {
+    private fun form(body:String):Map<String,String> = body.split('&').take(100).filter{it.contains('=')}.associate {
         val i=it.indexOf('=');URLDecoder.decode(it.substring(0,i),"UTF-8") to URLDecoder.decode(it.substring(i+1),"UTF-8")
     }
     private fun handle(socket:Socket) {socket.use{c->
@@ -128,80 +128,48 @@ class LocalAdminServer(private val context:Context,private val settings:Settings
             fun num(key:String,label:String,min:Int,max:Int){
                 opts.append("<label>${html(label)}<input type=number name='$key' min='$min' max='$max' value='${snap.optInt(key)}' required></label>")
             }
-            section("Diagnóstico y confirmaciones")
-            opts.append("<label><input type=checkbox name='debug_hud' value='1' " +
-                (if(settings.debugHudEnabled)"checked" else "") +
-                ">Activar panel DEBUG en pantalla</label>")
-            section("Opciones generales")
-            check("auto_start","Inicio automático")
-            check("splash","Mostrar logo")
-            check("offline_playback","Reproducir sin Internet")
-            check("external_cache","Caché externa privada")
-            num("sync_minutes","Sincronización (minutos)",1,60)
-            num("cache_mb","Límite caché (MB)",128,16384)
-            opts.append("<h4>Modos habilitados</h4>")
-            for((bit,title) in listOf(1 to "Cartelera",2 to "Overlay",4 to "Pantalla inteligente")){
-                val checked=(snap.optInt("enabled_modes",7) and bit)!=0
-                opts.append("<label><input type=checkbox name='mode_$bit' value='1' ${if(checked)"checked" else ""}>${html(title)}</label>")
+            var group=""
+            for(def in settings.schemaFields()){
+                val k=def.getString("key");val label=def.getString("label");val g=def.getString("group")
+                if(g!=group){section(g);group=g}
+                when(def.getString("type")){
+                    "bool"->check(k,label)
+                    "mask"->{for((bit,title) in listOf(1 to "Cartelera",2 to "Overlay",4 to "Turnos",8 to "Marcador deportivo")){
+                        opts.append("<label><input type=checkbox name='mode_$bit' value='1' ${if(snap.getInt(k) and bit!=0)"checked" else ""}>${html(title)}</label>")
+                    }}
+                    "playlist"->opts.append(select(k,label,snap.get(k).toString(),settings.playlistChoices(def).map{it.first.toString() to it.second}))
+                    "enum"->{val o=def.getJSONObject("options");val choices=o.keys().asSequence().map{it to o.getString(it)}.toList();opts.append(select(k,label,snap.get(k).toString(),choices))}
+                    else->num(k,label,def.getInt("min"),def.getInt("max"))
+                }
             }
-            opts.append(select("primary_mode","Modo principal",snap.optInt("primary_mode",1).toString(),
-                listOf("1" to "Cartelera","2" to "Overlay","3" to "Pantalla inteligente")))
-            section("Cartelera")
-            check("video_audio","Audio de videos")
-            check("signage_show_hud","Mostrar indicador de contenido")
-            num("signage_hud_seconds","Segundos de indicador",0,60)
-            section("Overlay")
-            opts.append(select("overlay_layout","Presentación",snap.optString("overlay_layout","bottom"),
-                listOf("bottom" to "Franja inferior","top" to "Franja superior",
-                    "left" to "Franja izquierda","right" to "Franja derecha",
-                    "fullscreen" to "Pantalla completa","half_horizontal" to "Media horizontal",
-                    "half_vertical" to "Media vertical")))
-            num("overlay_interval_sec","Cada cuántos segundos",60,86400)
-            num("overlay_duration_sec","Duración visible (seg)",3,120)
-            num("overlay_width_pct","Ancho (%)",15,100)
-            num("overlay_height_pct","Alto (%)",10,100)
-            num("overlay_opacity","Opacidad (%)",40,100)
-            section("Pantalla inteligente")
-            opts.append(select("smart_app","Aplicación",snap.optString("smart_app","queue"),
-                listOf("queue" to "Turnos","scoreboard" to "Marcador")))
-            num("smart_header_pct","Zona superior (%)",25,70)
-            num("smart_poll_sec","Consultar cada (seg)",5,120)
-            check("smart_sound","Tono cuando llaman turno")
-            section("Actualizaciones")
-            opts.append(select("update_policy","Política",snap.optInt("update_policy",2).toString(),
-                listOf("0" to "Manual","1" to "Avisar","2" to "Descargar y solicitar instalación")))
-            opts.append(select("update_channel","Canal",snap.optString("update_channel","debug"),
-                listOf("stable" to "Estable","beta" to "Beta","debug" to "Pruebas")))
             val content="<h2>2Cam Digital Signage · Panel local</h2><p>Configuración unificada por modo. Solo LAN; cierra en 30 minutos.</p><form method=post action='/save'><input type=hidden name=csrf value='$csrf'>$opts<button>Guardar configuración local</button></form><h3>Respaldo</h3><a href='/backup'>Descargar JSON (sin credenciales)</a><form method=post action='/restore'><input type=hidden name=csrf value='$csrf'><textarea name=json rows=7 placeholder='Pega el contenido JSON del respaldo'></textarea><button>Restaurar JSON</button></form><form method=post action='/stop'><input type=hidden name=csrf value='$csrf'><button>Cerrar panel local</button></form>"
             respond(c,200,page(content),"", "text/html; charset=utf-8");return
         }
         if(method=="GET"&&path=="/backup") {
-            val exported=JSONObject().put("format","digital-signage-settings").put("schema",1).put("settings",settings.publicSnapshot())
+            val exported=JSONObject().put("format","digital-signage-settings").put("schema",2).put("settings",settings.publicSnapshot())
             respond(c,200,exported.toString(2),"Content-Disposition: attachment; filename=signage-settings.json\r\n","application/json; charset=utf-8");return
         }
         if(method=="POST"){
             if(params["csrf"]!=sha(sessionHash+"ds-lan-csrf")){respond(c,403,"Solicitud no autorizada");return}
             if(path=="/stop"){respond(c,200,page("<p>Panel local cerrado.</p>"),"","text/html; charset=utf-8");close();return}
             if(path=="/save"){
-                settings.debugHudEnabled=params["debug_hud"]=="1"
                 val o=JSONObject()
-                for(k in listOf("auto_start","splash","video_audio","offline_playback",
-                    "external_cache","signage_show_hud","smart_sound"))o.put(k,params[k]=="1")
-                var modes=0
-                for(bit in listOf(1,2,4))if(params["mode_$bit"]=="1")modes=modes or bit
-                o.put("enabled_modes",modes)
-                for(k in listOf("primary_mode","update_policy","sync_minutes",
-                    "cache_mb","overlay_interval_sec","overlay_duration_sec","signage_hud_seconds",
-                    "overlay_width_pct","overlay_height_pct","overlay_opacity","smart_header_pct",
-                    "smart_poll_sec"))o.put(k,params[k]?.toIntOrNull()?:-1)
-                for(k in listOf("update_channel","overlay_layout","smart_app"))o.put(k,params[k]?:"")
+                for(def in settings.schemaFields()){
+                    val k=def.getString("key")
+                    when(def.getString("type")){
+                        "bool"->o.put(k,params[k]=="1")
+                        "mask"->{var modes=0;for(bit in listOf(1,2,4,8))if(params["mode_$bit"]=="1")modes=modes or bit;o.put(k,modes)}
+                        "enum"->o.put(k,if(def.get("default") is Int)params[k]?.toIntOrNull()?:-1 else params[k]?:"")
+                        else->o.put(k,params[k]?.toIntOrNull()?:-1)
+                    }
+                }
                 settings.validateSettings(o);settings.backupSnapshot("local-web-before-save")
                 if(!settings.applySnapshot(o))throw IllegalStateException("No se pudo guardar");respond(c,303,"","Location: /\r\n");return
             }
             if(path=="/restore"){
                 val input=JSONObject(params["json"]?:"")
-                require(input.optString("format")=="digital-signage-settings"&&input.optInt("schema")==1)
-                val o=settings.validateSettings(input.getJSONObject("settings"))
+                require(input.optString("format")=="digital-signage-settings"&&input.optInt("schema") in 1..2)
+                val o=settings.validateSettings(if(input.optInt("schema")==1)settings.migrateV1(input.getJSONObject("settings")) else input.getJSONObject("settings"))
                 settings.backupSnapshot("local-web-before-restore")
                 if(!settings.applySnapshot(o))throw IllegalStateException("No se pudo restaurar")
                 respond(c,303,"","Location: /\r\n");return
@@ -210,7 +178,7 @@ class LocalAdminServer(private val context:Context,private val settings:Settings
         respond(c,404,"Ruta no encontrada")
       }catch(e:Exception){try{respond(c,400,"Solicitud inválida: ${e.javaClass.simpleName}")}catch(_:Exception){} }
     }}
-    private fun page(content:String)="""<!doctype html><html lang='es'><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'><title>2Cam Digital Signage · Local</title><style>body{font:16px system-ui;background:#ecf1f7;color:#14243b;margin:0;padding:30px}main{max-width:740px;margin:auto;background:white;padding:24px;border-radius:12px;box-shadow:0 8px 30px #0002}label{display:block;margin:12px 0}input,textarea{padding:10px;border:1px solid #cbd5e1;border-radius:6px;max-width:100%;box-sizing:border-box}textarea{width:100%}input[type=checkbox]{accent-color:#07833c}select{padding:10px;border:1px solid #cbd5e1;border-radius:6px}button{background:#174589;color:white;border:0;padding:10px 18px;border-radius:6px;cursor:pointer;margin:12px 0}form{border-bottom:1px solid #ddd;margin-bottom:20px}a{color:#174589}</style></head><body><main>$content</main></body></html>"""
+    private fun page(content:String)="""<!doctype html><html lang='es'><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'><title>2Cam Digital Signage · Local</title><style>body{font:16px system-ui;background:#ecf1f7;color:#14243b;margin:0;padding:30px}main{max-width:740px;margin:auto;background:white;padding:24px;border-radius:12px;box-shadow:0 8px 30px #0002}label{display:block;margin:12px 0}input,textarea{padding:10px;border:1px solid #cbd5e1;border-radius:6px;max-width:100%;box-sizing:border-box}textarea{width:100%}input[type=checkbox]{accent-color:#07833c}select{max-width:100%;box-sizing:border-box;padding:10px;border:1px solid #cbd5e1;border-radius:6px}button{background:#174589;color:white;border:0;padding:10px 18px;border-radius:6px;cursor:pointer;margin:12px 0}form{border-bottom:1px solid #ddd;margin-bottom:20px}a{color:#174589}</style></head><body><main>$content</main></body></html>"""
     private fun respond(c:Socket,status:Int,body:String,extra:String="",type:String="text/plain; charset=utf-8") {
         val bytes=body.toByteArray(Charsets.UTF_8)
         val out=BufferedOutputStream(c.getOutputStream())
@@ -219,3 +187,4 @@ class LocalAdminServer(private val context:Context,private val settings:Settings
         out.write(bytes);out.flush()
     }
 }
+

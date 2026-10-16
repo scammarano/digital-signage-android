@@ -18,6 +18,17 @@ class SettingsStore(private val context: Context) {
     /** Temporary safety lock: every network/playback stage requires a button press. */
     /** Upgrade from the manual diagnostic build: return to automated boot exactly once. */
     fun prepareProductionStartup() {
+        if(!p.getBoolean("four_modes_migrated",false)){
+            val old=publicSnapshot()
+            if(p.getString("smart_app","queue")=="scoreboard"){
+                if(old.getInt("primary_mode")==3)old.put("primary_mode",4)
+                if(old.getInt("enabled_modes") and 4!=0)old.put("enabled_modes",old.getInt("enabled_modes") or 8)
+                if(manualMode==3)manualMode=4
+            }
+            if(old.optString("overlay_layout") in listOf("left","right"))old.put("overlay_layout","side")
+            if(old.optString("overlay_layout")=="top")old.put("overlay_layout","bottom")
+            check(applySnapshot(old));check(p.edit().putBoolean("four_modes_migrated",true).commit())
+        }
         if(!p.getBoolean("automatic_boot_migrated_048",false)){
             check(p.edit().putBoolean("diagnostic_manual_start",false)
                 .putBoolean("automatic_boot_migrated_048",true).commit())
@@ -52,15 +63,15 @@ class SettingsStore(private val context: Context) {
         get()=p.getInt("smart_header_pct",40).coerceIn(25,70)
         set(v){require(v in 25..70);p.edit().putInt("smart_header_pct",v).apply()}
     var smartPollSec:Int
-        get()=p.getInt("smart_poll_sec",10).coerceIn(5,120)
-        set(v){require(v in 5..120);p.edit().putInt("smart_poll_sec",v).apply()}
+        get()=p.getInt("smart_poll_sec",10).coerceIn(1,120)
+        set(v){require(v in 1..120);p.edit().putInt("smart_poll_sec",v).apply()}
     var smartSound:Boolean
         get()=p.getBoolean("smart_sound",false)
         set(v)=p.edit().putBoolean("smart_sound",v).apply()
     /** Debug HUD is local-only until the portal ships schema v2. */
     var debugHudEnabled:Boolean
-        get()=p.getBoolean("debug_hud",false)
-        set(v){p.edit().putBoolean("debug_hud",v).apply()}
+        get()=p.getBoolean("debug_hud_enabled",p.getBoolean("debug_hud",true))
+        set(v){p.edit().putBoolean("debug_hud_enabled",v).apply()}
     var autoStart: Boolean
         get() = p.getBoolean("auto_start", true)
         set(v) = p.edit().putBoolean("auto_start",v).apply()
@@ -71,14 +82,14 @@ class SettingsStore(private val context: Context) {
         get() = p.getBoolean("video_audio",true)
         set(v) = p.edit().putBoolean("video_audio",v).apply()
     var offlinePlayback: Boolean
-        get() = p.getBoolean("offline", true)
-        set(v) = p.edit().putBoolean("offline",v).apply()
+        get() = p.getBoolean("offline_playback",p.getBoolean("offline",true))
+        set(v) = p.edit().putBoolean("offline_playback",v).apply()
     var enabledModes: Int
-        get() = p.getInt("enabled_modes",7) and 7
-        set(v) = p.edit().putInt("enabled_modes",v and 7).apply()
+        get() = p.getInt("enabled_modes",15) and 15
+        set(v) = p.edit().putInt("enabled_modes",v and 15).apply()
     var primaryMode:Int
-        get()=p.getInt("primary_mode",1).coerceIn(1,3)
-        set(v){require(v in 1..3);p.edit().putInt("primary_mode",v).apply()}
+        get()=p.getInt("primary_mode",1).coerceIn(1,4)
+        set(v){require(v in 1..4);p.edit().putInt("primary_mode",v).apply()}
     var updatePolicy:Int
         get()=p.getInt("update_policy",2).coerceIn(0,2)
         set(v){require(v in 0..2);p.edit().putInt("update_policy",v).apply()}
@@ -92,8 +103,8 @@ class SettingsStore(private val context: Context) {
         get()=p.getLong("control_applied",0L)
         set(value) {p.edit().putLong("control_applied",value).commit()}
     var manualMode:Int
-        get()=p.getInt("manual_mode",0).coerceIn(0,3)
-        set(value){require(value in 0..3);p.edit().putInt("manual_mode",value).commit()}
+        get()=p.getInt("manual_mode",0).coerceIn(0,4)
+        set(value){require(value in 0..4);p.edit().putInt("manual_mode",value).commit()}
     var cacheMb: Int
         get() = p.getInt("cache_mb",if(Build.VERSION.SDK_INT <= 20) 128 else 256).coerceIn(128,16384)
         set(v) = p.edit().putInt("cache_mb",v.coerceIn(128,16384)).apply()
@@ -126,18 +137,27 @@ class SettingsStore(private val context: Context) {
         return try{ SecretKeyFactory.getInstance(if (Build.VERSION.SDK_INT >= 26) "PBKDF2WithHmacSHA256" else "PBKDF2WithHmacSHA1").generateSecret(spec).encoded } finally{spec.clearPassword()}
     }
     // Only allow-listed, non-secret options can be backed up or sent remotely.
+    val schema:org.json.JSONObject get()=org.json.JSONObject(context.assets.open("config-schema.json").bufferedReader().use{it.readText()})
+    fun schemaFields():List<org.json.JSONObject> {val a=schema.getJSONArray("fields");return (0 until a.length()).map{a.getJSONObject(it)}}
     fun publicSnapshot():org.json.JSONObject = org.json.JSONObject().apply {
-        put("signage_show_hud",signageShowHud);put("signage_hud_seconds",signageHudSeconds)
-        put("overlay_layout",overlayLayout);put("overlay_width_pct",overlayWidthPct)
-        put("overlay_height_pct",overlayHeightPct);put("overlay_opacity",overlayOpacity)
-        put("smart_app",smartApp);put("smart_header_pct",smartHeaderPct)
-        put("smart_poll_sec",smartPollSec);put("smart_sound",smartSound)
-        put("auto_start",autoStart);put("splash",splash);put("video_audio",videoAudio)
-        put("offline_playback",offlinePlayback);put("enabled_modes",enabledModes)
-        put("primary_mode",primaryMode);put("update_policy",updatePolicy);put("update_channel",updateChannel)
-        put("sync_minutes",syncMinutes);put("cache_mb",cacheMb);put("external_cache",externalCache)
-        put("overlay_interval_sec",overlayIntervalSec);put("overlay_duration_sec",overlayDurationSec)
+        for(f in schemaFields()) {val k=f.getString("key");val d=f.get("default")
+            val value:Any=when(k){
+                "debug_hud_enabled"->debugHudEnabled
+                "offline_playback"->offlinePlayback
+                else->when(d){is Boolean->p.getBoolean(k,d);is Int->p.getInt(k,d);else->p.getString(k,d.toString())?:d.toString()}
+            };put(k,value)
+        }
     }
+    fun playlistChoices(def:org.json.JSONObject):List<Pair<Int,String>> {
+        val catalog=CacheManager(context,this).active()?.optJSONObject("playlist_catalog")
+        val out=mutableListOf(0 to (if(def.getString("key")=="signage_playlist_id")"Programación del portal" else "Sin asignar"))
+        catalog?.keys()?.forEach{k->val p=catalog.optJSONObject(k);if(p!=null && p.optString("layout")==def.getString("layout"))out.add(p.getInt("id") to ("#${p.getInt("id")} · ${p.getString("name")}"))}
+        return out
+    }
+    fun settingInt(k:String)=publicSnapshot().getInt(k)
+    fun settingString(k:String)=publicSnapshot().getString(k)
+    fun modeLayout(mode:Int):String=when(mode){2->overlayLayout;3->settingString("queue_layout");4->settingString("scoreboard_layout");else->"fullscreen"}
+    fun playlistId(mode:Int):Int=if(mode==1)settingInt("signage_playlist_id") else settingInt((when(mode){2->"overlay";3->"queue";else->"scoreboard"})+"_playlist_"+modeLayout(mode))
     var overlayIntervalSec:Int
         get()=p.getInt("overlay_interval_sec",900).coerceIn(60,86400)
         set(v){require(v in 60..86400);p.edit().putInt("overlay_interval_sec",v).apply()}
@@ -152,77 +172,49 @@ class SettingsStore(private val context: Context) {
         set(v){require(v in 1024..65535);p.edit().putInt("lan_port",v).apply()}
     fun localAdminEnabled()=p.getBoolean("lan_admin_enabled",false)
     fun setLocalAdminEnabled(on:Boolean)=p.edit().putBoolean("lan_admin_enabled",on).commit()
-    fun validateSettings(j:org.json.JSONObject):org.json.JSONObject {
-        val allowed=setOf("auto_start","splash","video_audio","offline_playback",
-            "enabled_modes","primary_mode","sync_minutes","cache_mb","external_cache",
-            "update_policy","update_channel","overlay_interval_sec","overlay_duration_sec",
-            "signage_show_hud","signage_hud_seconds","overlay_layout","overlay_width_pct",
-            "overlay_height_pct","overlay_opacity","smart_app","smart_header_pct",
-            "smart_poll_sec","smart_sound")
-        val cursor=j.keys()
-        while(cursor.hasNext())require(cursor.next() in allowed){"Parámetro desconocido"}
-        // Old backups/configs without new options get backward-compatible defaults.
-        val full=publicSnapshot()
-        val keys=j.keys()
-        while(keys.hasNext()){val key=keys.next();full.put(key,j.get(key))}
-        fun bool(k:String):Boolean {
-            require(full.get(k) is Boolean){"Tipo de $k inválido"}
-            return full.getBoolean(k)
+    fun migrateV1(input:org.json.JSONObject):org.json.JSONObject {
+        val j=org.json.JSONObject(input.toString());val app=j.optString("smart_app","queue")
+        if(app=="scoreboard"){
+            if(j.optInt("primary_mode")==3)j.put("primary_mode",4)
+            if(j.has("enabled_modes") && j.optInt("enabled_modes") and 4!=0)j.put("enabled_modes",j.getInt("enabled_modes") or 8)
         }
-        fun number(k:String,low:Int,high:Int):Int {
-            require(full.get(k) is Int){"Tipo de $k inválido"}
-            return full.getInt(k).also{require(it in low..high){"$k fuera de rango"}}
-        }
-        val result=org.json.JSONObject()
-        for(k in listOf("auto_start","splash","video_audio","offline_playback",
-            "external_cache","signage_show_hud","smart_sound"))result.put(k,bool(k))
-        for((k,bounds) in mapOf(
-            "enabled_modes" to (1 to 7),"primary_mode" to (1 to 3),
-            "sync_minutes" to (1 to 60),"cache_mb" to (128 to 16384),
-            "update_policy" to (0 to 2),"overlay_interval_sec" to (60 to 86400),
-            "overlay_duration_sec" to (3 to 120),"signage_hud_seconds" to (0 to 60),
-            "overlay_width_pct" to (15 to 100),"overlay_height_pct" to (10 to 100),
-            "overlay_opacity" to (40 to 100),"smart_header_pct" to (25 to 70),
-            "smart_poll_sec" to (5 to 120)
-        ))result.put(k,number(k,bounds.first,bounds.second))
-        for((k,options) in mapOf(
-            "update_channel" to setOf("stable","beta","debug"),
-            "overlay_layout" to overlayLayouts,
-            "smart_app" to setOf("queue","scoreboard")
-        )){
-            require(full.get(k) is String && full.getString(k) in options){"Opción inválida para $k"}
-            result.put(k,full.getString(k))
-        }
-        require(result.getInt("enabled_modes") and (1 shl (result.getInt("primary_mode")-1))!=0){
-            "El modo principal debe estar habilitado"
-        }
-        require(result.getInt("overlay_duration_sec")<result.getInt("overlay_interval_sec")){
-            "La duración de Overlay debe ser menor que el intervalo"
-        }
-        return result
+        j.remove("smart_app");j.remove("smart_header_pct")
+        if(j.optString("overlay_layout") in listOf("left","right"))j.put("overlay_layout","side")
+        if(j.optString("overlay_layout")=="top")j.put("overlay_layout","bottom")
+        return j
     }
-    /** Single SharedPreferences.commit() makes config apply atomic at app level. Credentials/PIN stay untouched. */
+    fun validateSettings(j:org.json.JSONObject):org.json.JSONObject {
+        val full=publicSnapshot();val allowed=schemaFields().map{it.getString("key")}.toSet()
+        val keys=j.keys();while(keys.hasNext()){val k=keys.next();require(k in allowed){"Parámetro desconocido: $k"};full.put(k,j.get(k))}
+        for(f in schemaFields()) {val k=f.getString("key");val v=full.get(k)
+            when(f.getString("type")) {
+                "bool"->require(v is Boolean){"Tipo inválido: $k"}
+                "enum"->require(f.getJSONObject("options").has(v.toString())){"Opción inválida: $k"}
+                else->require(v is Int && v in f.getInt("min")..f.getInt("max")){"Fuera de rango: $k"}
+            }
+        }
+        require(full.getInt("enabled_modes") and (1 shl (full.getInt("primary_mode")-1))!=0){"El modo principal debe estar habilitado"}
+        require(full.getInt("overlay_duration_sec")<full.getInt("overlay_interval_sec")){"Duración Overlay debe ser menor que intervalo"}
+        return full
+    }
     @Synchronized fun applySnapshot(snapshot:org.json.JSONObject,newRevision:Long?=null):Boolean {
-        val v=validateSettings(snapshot)
-        if(newRevision!=null)require(newRevision>=0)
-        val e=p.edit()
-        for(k in listOf("auto_start","splash","video_audio","offline_playback","external_cache","signage_show_hud","smart_sound"))e.putBoolean(k,v.getBoolean(k))
-        for(k in listOf("enabled_modes","primary_mode","update_policy","sync_minutes","cache_mb","overlay_interval_sec","overlay_duration_sec","signage_hud_seconds","overlay_width_pct","overlay_height_pct","overlay_opacity","smart_header_pct","smart_poll_sec"))e.putInt(k,v.getInt(k))
-        e.putString("update_channel",v.getString("update_channel"))
-        e.putString("overlay_layout",v.getString("overlay_layout"))
-        e.putString("smart_app",v.getString("smart_app"))
+        val v=validateSettings(snapshot);if(newRevision!=null)require(newRevision>=0)
+        val e=p.edit();for(f in schemaFields()){val k=f.getString("key");val d=f.get("default")
+            when(d){is Boolean->e.putBoolean(k,v.getBoolean(k));is Int->e.putInt(k,v.getInt(k));else->e.putString(k,v.getString(k))}
+        }
         if(newRevision!=null)e.putLong("remote_revision",newRevision)
         return e.commit()
     }
     fun backupSnapshot(label:String):java.io.File {
         val dir=java.io.File(context.filesDir,"config-history").apply{mkdirs()}
         val f=java.io.File(dir,"settings-${System.currentTimeMillis()}-${java.security.SecureRandom().nextInt(99999)}.json")
-        val data=org.json.JSONObject().put("format","digital-signage-settings").put("schema",1).put("label",label.take(80)).put("settings",publicSnapshot())
+        val data=org.json.JSONObject().put("format","digital-signage-settings").put("schema",2).put("label",label.take(80)).put("settings",publicSnapshot())
         f.writeText(data.toString(2),Charsets.UTF_8)
         dir.listFiles()?.sortedByDescending{it.lastModified()}?.drop(10)?.forEach{it.delete()}
         return f
     }
     companion object {
-        val overlayLayouts=setOf("bottom","top","left","right","fullscreen","half_horizontal","half_vertical")
+        val overlayLayouts=setOf("bottom","side","fullscreen","half_horizontal","half_vertical")
         const val DEFAULT_PORTAL="https://www.2cam.services/digitaltv/portal/public/" }
 }
+

@@ -21,7 +21,8 @@ object TimeRules {
         val validFrom:String?,val validUntil:String?,val priority:Int,val enabled:Boolean)
     fun mode(blocks:List<ModeBlock>,fallback:Int,enabledMask:Int,now:LocalDateTime):Int {
         val sorted=blocks.sortedWith(compareByDescending<ModeBlock>{it.priority}.thenByDescending{it.id})
-        for(b in sorted)if(b.enabled && b.mode in 1..3 && enabledMask and (1 shl (b.mode-1))!=0 && active(b.daysMask,b.start,b.end,b.validFrom,b.validUntil,now))return b.mode
-        return if(fallback in 1..3 && enabledMask and (1 shl (fallback-1))!=0)fallback else 0
+        for(b in sorted)if(b.enabled && b.mode in 1..4 && enabledMask and (1 shl (b.mode-1))!=0 && active(b.daysMask,b.start,b.end,b.validFrom,b.validUntil,now))return b.mode
+        return if(fallback in 1..4 && enabledMask and (1 shl (fallback-1))!=0)fallback else 0
     }
 }
+

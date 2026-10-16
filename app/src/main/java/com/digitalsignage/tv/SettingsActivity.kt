@@ -34,29 +34,29 @@ class SettingsActivity:Activity(){
         root.addView(CheckBox(this).apply{text=label;isChecked=checked;textSize=18f;setTextColor(ScreenStyles.FOREGROUND);setPadding(4,8,4,8);setOnCheckedChangeListener{_,state->change(state)}})
     }
     private fun field(label:String,value:String,save:(String)->Unit){root.addView(ScreenStyles.label(this,label,17f))
-        val edit=EditText(this).apply{setSingleLine(true);setText(value);setTextColor(0xFF131313.toInt());setBackgroundColor(0xFFFFFFFF.toInt());setSelectAllOnFocus(true)}
+        val edit=EditText(this).apply{setSingleLine(true);setText(value);setTextColor(0xFF131313.toInt());setBackgroundColor(0xFFFFFFFF.toInt());setSelectAllOnFocus(true);setPadding(20,12,20,12);textSize=18f;layoutParams=LinearLayout.LayoutParams(-1,-2)}
         root.addView(edit);root.addView(ScreenStyles.button(this,"Guardar $label"){
             try{save(edit.text.toString().trim());android.widget.Toast.makeText(this,"Guardado",android.widget.Toast.LENGTH_SHORT).show()}
             catch(e:Exception){edit.error=e.message?:"Valor inválido"}
         })
     }
-    private fun showSettings(){root=ScreenStyles.column(this)
+    private fun showSettings(){root=ScreenStyles.column(this).apply{val dm=resources.displayMetrics;val x=maxOf((dm.widthPixels*0.06f).toInt(),(24*dm.density).toInt());val y=maxOf((dm.heightPixels*0.05f).toInt(),(16*dm.density).toInt());setPadding(x,y,x,y)}
         root.addView(ScreenStyles.label(this,"2CAM DIGITAL SIGNAGE · CONFIGURACIÓN",28f))
         root.addView(ScreenStyles.label(this,"Ajustes de este equipo, no modifican otras pantallas",16f))
         root.addView(ScreenStyles.label(this,
             "En reproducción: ARRIBA 3 veces abre este menú; ABAJO 3 veces sincroniza. " +
             "También funciona MENU cuando el control dispone de esa tecla.",16f))
         root.addView(ScreenStyles.label(this,"Android ${android.os.Build.VERSION.RELEASE} (API ${android.os.Build.VERSION.SDK_INT}) · ${LegacyProfile.description()}",14f))
-        root.addView(ScreenStyles.label(this,"Modo seleccionado: "+arrayOf("Según portal/horarios","Cartelera","Overlay","Pantalla inteligente")[config.manualMode],18f))
+        root.addView(ScreenStyles.label(this,"Modo seleccionado: "+arrayOf("Según portal/horarios","Cartelera","Overlay","Turnos","Marcador deportivo")[config.manualMode],18f))
         root.addView(ScreenStyles.label(this,"El botón verde indica el modo seleccionado.",15f))
-        listOf("Automático (portal)" to 0,"Cartelera" to 1,"Overlay" to 2,"Pantalla inteligente" to 3).forEach{ (title,value)->
+        listOf("Automático (portal)" to 0,"Cartelera" to 1,"Overlay" to 2,"Turnos" to 3,"Marcador deportivo" to 4).forEach{ (title,value)->
             root.addView(ScreenStyles.button(this,title,config.manualMode==value){
                 config.manualMode=value
                 showSettings()
             })
         }
         root.addView(ScreenStyles.button(this,"Seleccionar modo local (para pruebas)"){
-            val choices=arrayOf("Automático (según portal y horarios)","Cartelera","Overlay","Pantalla inteligente")
+            val choices=arrayOf("Automático (según portal y horarios)","Cartelera","Overlay","Turnos","Marcador deportivo")
             AlertDialog.Builder(this).setTitle("Modo principal")
                 .setSingleChoiceItems(choices,config.manualMode){dialog,selected->
                     config.manualMode=selected;dialog.dismiss()
@@ -64,7 +64,7 @@ class SettingsActivity:Activity(){
                         .setPositiveButton("Aceptar",null).show()
                 }.setNegativeButton("Cancelar",null).show()
         })
-        root.addView(ScreenStyles.label(this,"Modo principal configurado: "+arrayOf("","Cartelera","Overlay","Pantalla inteligente")[config.primaryMode],16f))
+        root.addView(ScreenStyles.label(this,"Modo principal configurado: "+arrayOf("","Cartelera","Overlay","Turnos","Marcador deportivo")[config.primaryMode],16f))
         root.addView(ScreenStyles.button(this,"Abrir diagnóstico de soporte"){
             startActivity(Intent(this,DiagnosticHomeActivity::class.java))
         })
@@ -74,71 +74,37 @@ class SettingsActivity:Activity(){
         root.addView(ScreenStyles.button(this,"Diagnóstico y logs locales"){
             startActivity(Intent(this,DiagnosticsActivity::class.java))
         })
-        root.addView(ScreenStyles.label(this,"CARTELERA",24f))
-        toggle("Mostrar información temporal sobre contenido",config.signageShowHud){config.signageShowHud=it}
-        field("Duración de información (0–60 seg)",config.signageHudSeconds.toString()){config.signageHudSeconds=it.toInt()}
-        root.addView(ScreenStyles.label(this,"OVERLAY (superposición)",24f))
-        fun select(title:String,current:String,options:List<Pair<String,String>>,save:(String)->Unit){
-            root.addView(ScreenStyles.button(this,"$title: "+(options.find{it.first==current}?.second?:current)){
-                val labels=options.map{it.second}.toTypedArray()
-                android.app.AlertDialog.Builder(this).setTitle(title)
-                    .setSingleChoiceItems(labels,options.indexOfFirst{it.first==current}){dialog,which->
-                        save(options[which].first);dialog.dismiss();showSettings()
-                    }.setNegativeButton("Cancelar",null).show()
-            })
-        }
-        select("Posición",config.overlayLayout,listOf(
-            "bottom" to "Franja inferior","top" to "Franja superior",
-            "left" to "Franja izquierda","right" to "Franja derecha",
-            "fullscreen" to "Pantalla completa temporal",
-            "half_horizontal" to "Media pantalla horizontal",
-            "half_vertical" to "Media pantalla vertical"
-        )){config.overlayLayout=it}
-        field("Intervalo Overlay (60–86400 seg)",config.overlayIntervalSec.toString()){config.overlayIntervalSec=it.toInt()}
-        field("Duración Overlay (3–120 seg)",config.overlayDurationSec.toString()){config.overlayDurationSec=it.toInt()}
-        field("Ancho franja Overlay (%)",config.overlayWidthPct.toString()){config.overlayWidthPct=it.toInt()}
-        field("Alto franja Overlay (%)",config.overlayHeightPct.toString()){config.overlayHeightPct=it.toInt()}
-        field("Opacidad Overlay (%)",config.overlayOpacity.toString()){config.overlayOpacity=it.toInt()}
-        root.addView(ScreenStyles.label(this,"PANTALLA INTELIGENTE",24f))
-        select("Aplicación",config.smartApp,listOf("queue" to "Sala de espera / Turnos","scoreboard" to "Marcador / Puntos")){config.smartApp=it}
-        field("Área superior inteligente (%)",config.smartHeaderPct.toString()){config.smartHeaderPct=it.toInt()}
-        field("Refrescar Turnos / Marcador (seg)",config.smartPollSec.toString()){config.smartPollSec=it.toInt()}
-        toggle("Aviso sonoro al llamar turno",config.smartSound){config.smartSound=it}
-        root.addView(ScreenStyles.label(this,"DEPURACIÓN Y PRUEBAS",24f))
-        toggle("Mostrar HUD DEBUG sobre el contenido",config.debugHudEnabled){
-            config.debugHudEnabled=it
-        }
-        root.addView(ScreenStyles.label(this,"Con DEBUG activo: revisión de playlists cada ~15 s, versión, modo, errores y eventos visibles.",15f))
-        root.addView(ScreenStyles.label(this,"GENERAL",24f))
-        select("Modo principal",config.primaryMode.toString(),listOf("1" to "Cartelera","2" to "Overlay","3" to "Pantalla inteligente")){choice->
-            val mode=choice.toInt()
-            if(config.enabledModes and (1 shl (mode-1)) !=0)config.primaryMode=mode
-            else android.widget.Toast.makeText(this,"Habilita primero este modo",android.widget.Toast.LENGTH_LONG).show()
-        }
-        select("Actualización APK",config.updatePolicy.toString(),listOf("0" to "Manual","1" to "Avisar","2" to "Descargar y pedir instalación")){config.updatePolicy=it.toInt()}
-        select("Canal de actualización",config.updateChannel,listOf("stable" to "Estable","beta" to "Beta","debug" to "Pruebas")){config.updateChannel=it}
-        toggle("Arrancar automáticamente cuando Android lo permita",config.autoStart){config.autoStart=it}
-        toggle("Mostrar logo al iniciar la app",config.splash){config.splash=it}
-        toggle("Mantener último contenido offline",config.offlinePlayback){config.offlinePlayback=it}
-        toggle("Reproducir audio en videos de cartelera",config.videoAudio){config.videoAudio=it}
-        fun toggleMode(bit:Int,enabled:Boolean){
-            val mask=if(enabled)config.enabledModes or bit else config.enabledModes and bit.inv()
-            if(mask==0){
-                android.widget.Toast.makeText(this,"Mantén habilitado al menos un modo",android.widget.Toast.LENGTH_LONG).show()
-            }else{
-                config.enabledModes=mask
-                if(mask and (1 shl (config.primaryMode-1))==0){
-                    config.primaryMode=when{mask and 1!=0->1;mask and 2!=0->2;else->3}
+        root.addView(ScreenStyles.button(this,"Sports directo LAN · enlazar control"){
+            startActivity(Intent(this,SportsActivity::class.java))
+        })
+        val snapshot=config.publicSnapshot()
+        var group=""
+        for(def in config.schemaFields()){
+            val key=def.getString("key");val label=def.getString("label");val section=def.getString("group")
+            if(group!=section){root.addView(ScreenStyles.label(this,section,23f));group=section}
+            fun save(value:Any){val next=config.publicSnapshot().put(key,value);check(config.applySnapshot(next))}
+            when(def.getString("type")){
+                "bool"->toggle(label,snapshot.getBoolean(key)){save(it)}
+                "mask"->for(mode in 1..4){val bit=1 shl (mode-1);toggle(config.schema.getJSONObject("modes").getString(mode.toString()),snapshot.getInt(key) and bit!=0){enabled->
+                    try{val old=config.enabledModes;save(if(enabled)old or bit else old and bit.inv())}catch(e:Exception){android.widget.Toast.makeText(this,e.message,android.widget.Toast.LENGTH_LONG).show()};showSettings()
+                }}
+                "playlist"->{val choices=config.playlistChoices(def);val current=snapshot.getInt(key)
+                    root.addView(ScreenStyles.button(this,label+": "+(choices.find{it.first==current}?.second?:"#$current · No disponible")){
+                        AlertDialog.Builder(this).setTitle(label).setSingleChoiceItems(choices.map{it.second}.toTypedArray(),choices.indexOfFirst{it.first==current}){dialog,n->
+                            save(choices[n].first);dialog.dismiss();showSettings()
+                        }.setNegativeButton("Cancelar",null).show()
+                    })
                 }
+                "enum"->{val options=def.getJSONObject("options");val ids=options.keys().asSequence().toList()
+                    root.addView(ScreenStyles.button(this,label+": "+options.getString(snapshot.get(key).toString())){
+                        AlertDialog.Builder(this).setTitle(label).setSingleChoiceItems(ids.map{options.getString(it)}.toTypedArray(),ids.indexOf(snapshot.get(key).toString())){dialog,n->
+                            try{save(if(def.get("default") is Int)ids[n].toInt() else ids[n]);dialog.dismiss();showSettings()}catch(e:Exception){android.widget.Toast.makeText(this,e.message,android.widget.Toast.LENGTH_LONG).show()}
+                        }.setNegativeButton("Cancelar",null).show()
+                    })
+                }
+                else->field(label,snapshot.get(key).toString()){save(it.toInt())}
             }
-            showSettings()
         }
-        toggle("Habilitar Cartelera",config.enabledModes and 1!=0){toggleMode(1,it)}
-        toggle("Habilitar Overlay",config.enabledModes and 2!=0){toggleMode(2,it)}
-        toggle("Habilitar Pantalla inteligente",config.enabledModes and 4!=0){toggleMode(4,it)}
-        toggle("Almacenar caché en espacio externo propio de la app",config.externalCache){config.externalCache=it}
-        field("Límite de caché en MB",config.cacheMb.toString()){config.cacheMb=it.toInt()}
-        field("Sincronización cada N minutos",config.syncMinutes.toString()){config.syncMinutes=it.toInt()}
         field("URL del portal HTTPS",config.portalUrl){v->
             require(v.startsWith("https://")&&v.endsWith("/")&&java.net.URL(v).host.isNotBlank()){"URL HTTPS inválida"};config.portalUrl=v
         }
@@ -180,7 +146,8 @@ class SettingsActivity:Activity(){
               .setNegativeButton("Cancelar",null).setPositiveButton("Desvincular"){_,_->SecureToken(this).clear();stopService(Intent(this,OverlayService::class.java));finish()}.show()
         })
         root.addView(ScreenStyles.button(this,"Cerrar configuración") {finish()})
-        val scroll=ScrollView(this).apply{addView(root)}
+        val scroll=ScrollView(this).apply{isFillViewport=true;clipToPadding=false;addView(root)}
         setContentView(scroll)
     }
 }
+

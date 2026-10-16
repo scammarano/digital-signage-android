@@ -11,7 +11,7 @@ class ManifestModel(val json:JSONObject){
     fun localNow():LocalDateTime = LocalDateTime.now(timezone)
     fun activeMode(settings:SettingsStore):Int {
         val override=settings.manualMode
-        if(override in 1..3 && (settings.enabledModes and (1 shl (override-1)))!=0)return override
+        if(override in 1..4 && (settings.enabledModes and (1 shl (override-1)))!=0)return override
         val rows=json.optJSONArray("mode_blocks")?:JSONArray()
         val blocks=ArrayList<TimeRules.ModeBlock>()
         for(i in 0 until rows.length()){
@@ -21,7 +21,7 @@ class ManifestModel(val json:JSONObject){
                 r.optString("valid_from").takeIf{it.isNotBlank()&&it!="null"},
                 r.optString("valid_until").takeIf{it.isNotBlank()&&it!="null"},r.optInt("priority"),r.optInt("enabled",1)==1))
         }
-        val remoteMask=json.optJSONObject("device_options")?.optInt("modes_enabled",7)?:7
+        val remoteMask=json.optJSONObject("device_options")?.optInt("modes_enabled",15)?:15
         return TimeRules.mode(blocks,settings.primaryMode,settings.enabledModes and remoteMask,localNow())
     }
     fun entries():JSONArray {
@@ -36,6 +36,18 @@ class ManifestModel(val json:JSONObject){
         if(selectedItems!=null&&selectedItems.length()>0)return selectedItems
         return json.optJSONObject("fallback")?.optJSONArray("items") ?: JSONArray()
     }
+    fun entries(settings:SettingsStore,mode:Int):JSONArray {
+        val id=settings.playlistId(mode)
+        if(mode==1 && id==0)return entries()
+        if(id==0)return JSONArray()
+        val catalog=json.optJSONObject("playlist_catalog")?:return JSONArray()
+        val list=catalog.optJSONObject(id.toString())?:return JSONArray()
+        val layout=settings.modeLayout(mode)
+        if(list.optString("layout")!=layout)return JSONArray()
+        val ori=list.optString("orientation")
+        if(ori!="any" && ori!=json.optString("orientation"))return JSONArray()
+        return list.optJSONArray("items")?:JSONArray()
+    }
     fun allMedia():List<JSONObject>{
         val out=linkedMapOf<String,JSONObject>()
         fun add(a:JSONArray?){if(a==null)return;for(i in 0 until a.length()){
@@ -44,7 +56,10 @@ class ManifestModel(val json:JSONObject){
         add(json.optJSONObject("fallback")?.optJSONArray("items"))
         val schedules=json.optJSONArray("schedules")?:JSONArray()
         for(i in 0 until schedules.length())add(schedules.optJSONObject(i)?.optJSONArray("items"))
+        val catalog=json.optJSONObject("playlist_catalog")
+        catalog?.keys()?.forEach{k->add(catalog.optJSONObject(k)?.optJSONArray("items"))}
         return out.values.toList()
     }
     fun widget():JSONObject = json.optJSONObject("live")?:JSONObject()
 }
+
