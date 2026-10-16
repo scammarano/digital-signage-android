@@ -38,7 +38,11 @@ class ManifestModel(val json:JSONObject){
     }
     fun entries(settings:SettingsStore,mode:Int):JSONArray {
         val id=settings.playlistId(mode)
-        if(mode==1 && id==0)return entries()
+        if(mode==1 && id==0){
+            val legacy=entries();val full=JSONArray()
+            for(i in 0 until legacy.length()){val item=legacy.optJSONObject(i)?:continue;if(item.optString("layout","fullscreen")=="fullscreen")full.put(item)}
+            return full
+        }
         if(id==0)return JSONArray()
         val catalog=json.optJSONObject("playlist_catalog")?:return JSONArray()
         val list=catalog.optJSONObject(id.toString())?:return JSONArray()

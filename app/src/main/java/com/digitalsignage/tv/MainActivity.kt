@@ -283,7 +283,7 @@ class MainActivity : Activity() {
         val media=FrameLayout(this).apply{setBackgroundColor(0xFF020609.toInt())}
         // Full screen advertising is a temporary takeover, preserving the live widget behind it.
         root.addView(media,FrameLayout.LayoutParams(mediaW,mediaH,Gravity.BOTTOM or Gravity.RIGHT))
-        stage=media;deck=MediaDeck(media,cache,if(smart)false else settings.videoAudio)
+        stage=media;deck=MediaDeck(media,cache,if(smart)false else settings.videoAudio,smart)
         val hud=ScreenStyles.label(this,"Digital Signage",13f).apply{setBackgroundColor(0x990A1424.toInt());gravity=Gravity.END}
         status=hud
         if(settings.signageShowHud && settings.signageHudSeconds>0){
@@ -296,7 +296,10 @@ class MainActivity : Activity() {
     }
     private fun drawLiveBoard(){
         if(activeMode==4 && settings.settingString("scoreboard_source")=="lan"){
-            SportsRuntime.start(this);mode3Header?.text=SportsRuntime.board(this);return
+            SportsRuntime.start(this);mode3Header?.text=SportsRuntime.board(this)
+            if(SportsRuntime.error.isBlank() && (DeviceDebug.effective(this)!=settings.remoteRevision || DeviceDebug.effectiveMode(this)!=4))
+                DeviceDebug.record(this,logs,"effective",settings.remoteRevision,"Sports directo LAN mostrado",4)
+            return
         }
         val m=lastLive;val type=if(activeMode==4)"scoreboard" else "queue";val d=m.optJSONObject("payload")?:JSONObject()
         if(m.optString("widget_type",type)!=type){
@@ -359,8 +362,8 @@ class MainActivity : Activity() {
             lastError=message;logs.record("error","media",message)
             status?.apply{visibility=View.VISIBLE;text=message};ui.postDelayed({advance()},2500)
         },{
-            if(DeviceDebug.effective(this)!=settings.remoteRevision ||
-                DeviceDebug.effectiveMode(this)!=activeMode){
+            if(stage?.visibility==View.VISIBLE && (DeviceDebug.effective(this)!=settings.remoteRevision ||
+                DeviceDebug.effectiveMode(this)!=activeMode)){
                 DeviceDebug.record(this,logs,"effective",settings.remoteRevision,
                     "Medio renderizado en "+DeviceDebug.mode(activeMode),activeMode)
             }

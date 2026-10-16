@@ -15,7 +15,7 @@ import java.io.File
 import java.util.concurrent.Executors
 
 /** Double-buffered image/video viewer; old frame remains until next element is ready. */
-class MediaDeck(private val stage:FrameLayout,private val cache:CacheManager,private val playAudio:Boolean) {
+class MediaDeck(private val stage:FrameLayout,private val cache:CacheManager,private val playAudio:Boolean,private val regionIsSized:Boolean=false) {
     private val decode=Executors.newSingleThreadExecutor()
     private val main=Handler(Looper.getMainLooper())
     private var serial=0
@@ -24,6 +24,7 @@ class MediaDeck(private val stage:FrameLayout,private val cache:CacheManager,pri
     private var pendingTimer:Runnable?=null
     fun clear(){++serial;pendingTimer?.let{main.removeCallbacks(it)};pendingTimer=null;currentVideo?.stopPlayback();currentVideo=null;current=null;stage.removeAllViews()}
     private fun sizeFor(item:JSONObject):FrameLayout.LayoutParams {
+        if(regionIsSized)return FrameLayout.LayoutParams(-1,-1)
         val width=stage.width.takeIf{it>0}?:stage.resources.displayMetrics.widthPixels
         val height=stage.height.takeIf{it>0}?:stage.resources.displayMetrics.heightPixels
         val layout=item.optString("layout","fullscreen")
@@ -130,3 +131,4 @@ class MediaDeck(private val stage:FrameLayout,private val cache:CacheManager,pri
         currentVideo=video
     }
 }
+
