@@ -90,8 +90,8 @@ class SettingsStore(private val context: Context) {
         get()=p.getInt("update_policy",2).coerceIn(0,2)
         set(v){require(v in 0..2);p.edit().putInt("update_policy",v).apply()}
     var updateChannel:String
-        get()=p.getString("update_channel","debug")?.takeIf{it in listOf("stable","beta","debug")} ?: "debug"
-        set(v){require(v in listOf("stable","beta","debug"));p.edit().putString("update_channel",v).apply()}
+        get()=p.getString("update_channel","debug")?.let{if(it=="beta")"stable" else it}?.takeIf{it in listOf("stable","debug")} ?: "debug"
+        set(v){require(v in listOf("stable","debug"));p.edit().putString("update_channel",v).apply()}
     var syncMinutes: Int
         get() = p.getInt("sync_minutes",1).coerceIn(1,60)
         set(v) = p.edit().putInt("sync_minutes",v.coerceIn(1,60)).apply()
@@ -217,6 +217,7 @@ class SettingsStore(private val context: Context) {
     fun setLocalAdminEnabled(on:Boolean)=p.edit().putBoolean("lan_admin_enabled",on).commit()
     fun migrateV1(input:org.json.JSONObject):org.json.JSONObject {
         val j=org.json.JSONObject(input.toString());val app=j.optString("smart_app","queue")
+        if(j.optString("update_channel")=="beta")j.put("update_channel","stable")
         if(app=="scoreboard"){
             if(j.optInt("primary_mode")==3)j.put("primary_mode",4)
             if(j.has("enabled_modes") && j.optInt("enabled_modes") and 4!=0)j.put("enabled_modes",j.getInt("enabled_modes") or 8)

@@ -425,9 +425,8 @@
       "default": "debug",
       "type": "enum",
       "options": {
-        "stable": "Estable",
-        "beta": "Beta",
-        "debug": "Pruebas"
+        "stable": "Solo estables",
+        "debug": "Estables y pruebas"
       }
     }
   ]
