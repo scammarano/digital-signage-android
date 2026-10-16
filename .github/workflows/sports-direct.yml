@@ -28,7 +28,7 @@ jobs:
           path: ~/.android/debug.keystore
           key: digital-signage-sports-debug-v1
       - name: Candidate signing policy
-        run: echo 'CI produces a test-signed candidate. Customer delivery requires the permanent private key and certificate verification.' 
+        run: echo 'CI produces a test-signed candidate. Customer delivery requires the permanent private key and certificate verification.'
       - run: python3 scripts/create_icon.py
       - name: Assert DEBUG HUD and runtime ACK are wired
         run: |

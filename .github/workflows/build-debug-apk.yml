@@ -31,7 +31,7 @@ jobs:
           path: ~/.android/debug.keystore
           key: digital-signage-sports-debug-v1
       - name: Candidate signing policy
-        run: echo 'Test-signed candidate only; permanent-key signing is required before customer delivery.' 
+        run: echo 'Test-signed candidate only; permanent-key signing is required before customer delivery.'
       - name: Generate 2Cam launcher icon (PNG, Android 4.4 safe)
         run: python3 scripts/create_icon.py
       - name: Verify legacy network compatibility

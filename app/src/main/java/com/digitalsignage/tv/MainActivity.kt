@@ -236,7 +236,7 @@ class MainActivity : Activity() {
         val model=manifest
         if(model==null){showConnecting();return}
         val mode=model.activeMode(settings)
-        val modeError=ModeReadiness.error(settings.publicSnapshot(),model,mode)
+        val modeError=ModeReadiness.error(settings.publicSnapshot(),model,mode,true)
         if(modeError!=null){
             if(lastBlockedMode!=modeError){
                 stopOverlay();deck?.clear();deck=null;stage=null;activeMode=0

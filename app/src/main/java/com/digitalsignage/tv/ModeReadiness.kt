@@ -12,7 +12,7 @@ object ModeReadiness {
     }
     fun playlist(config:JSONObject,mode:Int):Int=if(mode==1)config.getInt("signage_playlist_id") else
         config.getInt((when(mode){2->"overlay";3->"queue";else->"scoreboard"})+"_playlist_"+layout(config,mode))
-    fun error(config:JSONObject,model:ManifestModel?,mode:Int):String? {
+    fun error(config:JSONObject,model:ManifestModel?,mode:Int,atRuntime:Boolean=false):String? {
         if(mode !in 1..4)return "Modo inválido"
         if(config.getInt("enabled_modes") and (1 shl (mode-1))==0)return "Este modo está deshabilitado"
         val name=DeviceDebug.mode(mode)
@@ -21,6 +21,13 @@ object ModeReadiness {
         if(mode==1 && id==0){
             val items=model.entries()
             for(i in 0 until items.length())if(items.optJSONObject(i)?.optString("layout","fullscreen")=="fullscreen")return null
+            if(!atRuntime){
+                val schedules=model.json.optJSONArray("schedules")
+                for(i in 0 until (schedules?.length()?:0)){
+                    val future=schedules?.optJSONObject(i)?.optJSONArray("items")?:continue
+                    for(n in 0 until future.length())if(future.optJSONObject(n)?.optString("layout","fullscreen")=="fullscreen")return null
+                }
+            }
             return "Cartelera: no hay playlist de pantalla completa disponible en la programación actual"
         }
         if(id<=0)return "$name: asigna una playlist para ${layout(config,mode)} antes de activar"
