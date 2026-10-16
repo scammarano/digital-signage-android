@@ -133,7 +133,9 @@
         "bottom": "Franja inferior",
         "side": "Franja lateral derecha",
         "half_horizontal": "Media pantalla horizontal",
-        "half_vertical": "Media pantalla vertical"
+        "half_vertical": "Media pantalla vertical",
+        "top": "Franja superior",
+        "left": "Franja lateral izquierda"
       }
     },
     {

@@ -25,8 +25,7 @@ class SettingsStore(private val context: Context) {
                 if(old.getInt("enabled_modes") and 4!=0)old.put("enabled_modes",old.getInt("enabled_modes") or 8)
                 if(manualMode==3)manualMode=4
             }
-            if(old.optString("overlay_layout") in listOf("left","right"))old.put("overlay_layout","side")
-            if(old.optString("overlay_layout")=="top")old.put("overlay_layout","bottom")
+            if(old.optString("overlay_layout") =="right")old.put("overlay_layout","side")
             check(applySnapshot(old));check(p.edit().putBoolean("four_modes_migrated",true).commit())
         }
         if(!p.getBoolean("automatic_boot_migrated_048",false)){
@@ -158,7 +157,7 @@ class SettingsStore(private val context: Context) {
     }
     fun settingInt(k:String)=publicSnapshot().getInt(k)
     fun settingString(k:String)=publicSnapshot().getString(k)
-    fun modeLayout(mode:Int):String=when(mode){2->overlayLayout;3->settingString("queue_layout");4->settingString("scoreboard_layout");else->"fullscreen"}
+    fun modeLayout(mode:Int):String=when(mode){2->when(overlayLayout){"top"->"bottom";"left"->"side";else->overlayLayout};3->settingString("queue_layout");4->settingString("scoreboard_layout");else->"fullscreen"}
     fun playlistId(mode:Int):Int=if(mode==1)settingInt("signage_playlist_id") else settingInt((when(mode){2->"overlay";3->"queue";else->"scoreboard"})+"_playlist_"+modeLayout(mode))
     var overlayIntervalSec:Int
         get()=p.getInt("overlay_interval_sec",900).coerceIn(60,86400)
@@ -181,8 +180,7 @@ class SettingsStore(private val context: Context) {
             if(j.has("enabled_modes") && j.optInt("enabled_modes") and 4!=0)j.put("enabled_modes",j.getInt("enabled_modes") or 8)
         }
         j.remove("smart_app");j.remove("smart_header_pct")
-        if(j.optString("overlay_layout") in listOf("left","right"))j.put("overlay_layout","side")
-        if(j.optString("overlay_layout")=="top")j.put("overlay_layout","bottom")
+        if(j.optString("overlay_layout") =="right")j.put("overlay_layout","side")
         return j
     }
     fun validateSettings(j:org.json.JSONObject):org.json.JSONObject {
@@ -216,7 +214,7 @@ class SettingsStore(private val context: Context) {
         return f
     }
     companion object {
-        val overlayLayouts=setOf("bottom","side","fullscreen","half_horizontal","half_vertical")
+        val overlayLayouts=setOf("bottom","top","left","side","fullscreen","half_horizontal","half_vertical")
         const val DEFAULT_PORTAL="https://www.2cam.services/digitaltv/portal/public/" }
 }
 
