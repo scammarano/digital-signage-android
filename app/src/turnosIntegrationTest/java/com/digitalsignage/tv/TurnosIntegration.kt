@@ -65,6 +65,8 @@ object TurnosIntegration {
             test.runOnMainSync{
                 val zone=screen.window.decorView.findViewWithTag<FrameLayout>("advertising-zone")
                 check(zone.width>0&&zone.height>0&&zone.height<screen.resources.displayMetrics.heightPixels/2){"Advertising geometry changed"}
+                val board=screen.window.decorView.findViewWithTag<TextView>("live-board")
+                check(board.bottom<=zone.top){"Advertising covers the called ticket after orientation change"}
             }
             waitChildren(test,screen)
             fixture.stop();waitFor(test,screen,"live-board","ESTADO DESACTUALIZADO")

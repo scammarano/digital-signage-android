@@ -309,6 +309,19 @@ class MainActivity : Activity() {
         root.addView(media,FrameLayout.LayoutParams(mediaW,mediaH,Gravity.BOTTOM or Gravity.RIGHT))
         stage=media;deck=MediaDeck(media,cache,if(smart)false else settings.videoAudio,smart)
         media.tag="advertising-zone"
+        // Requested orientation can complete after onCreate; size zones from the actual laid-out window.
+        root.addOnLayoutChangeListener{_,left,top,right,bottom,oldLeft,oldTop,oldRight,oldBottom->
+            val width=right-left;val height=bottom-top
+            if(width>0&&height>0&&(width!=oldRight-oldLeft||height!=oldBottom-oldTop)){
+                val mw=when(layout){"side"->width*settings.mediaFormatPercent("side")/100;"half_vertical"->width/2;else->width}
+                val mh=when(layout){"bottom"->height*settings.mediaFormatPercent("bottom")/100;"half_horizontal"->height/2;else->height}
+                media.layoutParams=FrameLayout.LayoutParams(mw,mh,Gravity.BOTTOM or Gravity.RIGHT)
+                if(smart)mode3Header?.layoutParams=FrameLayout.LayoutParams(
+                    if(layout in listOf("side","half_vertical"))width-mw else width,
+                    if(layout in listOf("bottom","half_horizontal"))height-mh else height,
+                    Gravity.TOP or Gravity.LEFT)
+            }
+        }
         val hud=ScreenStyles.label(this,"Digital Signage",13f).apply{setBackgroundColor(0x990A1424.toInt());gravity=Gravity.END}
         status=hud
         if(settings.signageShowHud && settings.signageHudSeconds>0){
