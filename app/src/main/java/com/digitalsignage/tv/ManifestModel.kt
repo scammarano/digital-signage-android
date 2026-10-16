@@ -21,7 +21,8 @@ class ManifestModel(val json:JSONObject){
                 r.optString("valid_from").takeIf{it.isNotBlank()&&it!="null"},
                 r.optString("valid_until").takeIf{it.isNotBlank()&&it!="null"},r.optInt("priority"),r.optInt("enabled",1)==1))
         }
-        val remoteMask=json.optJSONObject("device_options")?.optInt("modes_enabled",15)?:15
+        val legacyMask=json.optJSONObject("device_options")?.optInt("modes_enabled",15)?:15
+        val remoteMask=if(json.optInt("schema_version",2)<3 && legacyMask and 4!=0)legacyMask or 8 else legacyMask
         return TimeRules.mode(blocks,settings.primaryMode,settings.enabledModes and remoteMask,localNow())
     }
     fun entries():JSONArray {
