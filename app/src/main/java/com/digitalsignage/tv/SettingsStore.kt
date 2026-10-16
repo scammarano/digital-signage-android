@@ -170,6 +170,7 @@ class SettingsStore(private val context: Context) {
             val value:Any=when(k){
                 "debug_hud_enabled"->debugHudEnabled
                 "offline_playback"->offlinePlayback
+                "update_channel"->updateChannel
                 else->when(d){is Boolean->p.getBoolean(k,d);is Int->p.getInt(k,d);else->p.getString(k,d.toString())?:d.toString()}
             };put(k,value)
         }
