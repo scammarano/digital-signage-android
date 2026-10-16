@@ -81,7 +81,7 @@ object TurnosIntegration {
             waitFor(test,reopened,"live-board","A-002");waitFor(test,reopened,"live-board","ESTADO DESACTUALIZADO")
             val other=JSONObject(binding.cached().toString()).put("screen_id",java.util.UUID.randomUUID().toString())
             try{TurnosLocalApi.validate(other,binding.id);error("Cross-scope snapshot accepted")}catch(_:IllegalArgumentException){}
-            println("TURNOS_SIGNAGE_INTEGRATION_PASS native_pairing mixed_media offline reconnect restart revoked_scope no_queue_logic_in_player")
+            test.sendStatus(0,android.os.Bundle().apply{putString("stream","TURNOS_SIGNAGE_INTEGRATION_PASS native_pairing mixed_media offline reconnect restart revoked_scope no_queue_logic_in_player\n")})
         }finally{
             player?.let{test.runOnMainSync{it.finish()}};fixture.close();binding.clear();settings.applySnapshot(original);settings.manualMode=originalManual;settings.diagnosticMode=originalDiagnostic
             if(saved==null)active.delete()else active.writeBytes(saved)
