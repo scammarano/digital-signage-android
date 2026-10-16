@@ -104,6 +104,11 @@ class SettingsActivity:Activity(){
         field("Área superior inteligente (%)",config.smartHeaderPct.toString()){config.smartHeaderPct=it.toInt()}
         field("Refrescar Turnos / Marcador (seg)",config.smartPollSec.toString()){config.smartPollSec=it.toInt()}
         toggle("Aviso sonoro al llamar turno",config.smartSound){config.smartSound=it}
+        root.addView(ScreenStyles.label(this,"DEPURACIÓN Y PRUEBAS",24f))
+        toggle("Mostrar HUD DEBUG sobre el contenido",config.debugHudEnabled){
+            config.debugHudEnabled=it
+        }
+        root.addView(ScreenStyles.label(this,"Con DEBUG activo: revisión de playlists cada ~15 s, versión, modo, errores y eventos visibles.",15f))
         root.addView(ScreenStyles.label(this,"GENERAL",24f))
         select("Modo principal",config.primaryMode.toString(),listOf("1" to "Cartelera","2" to "Overlay","3" to "Pantalla inteligente")){choice->
             val mode=choice.toInt()
