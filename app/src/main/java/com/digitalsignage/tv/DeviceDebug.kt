@@ -54,8 +54,9 @@ object DeviceDebug {
         val sync=if(syncAt>0L)fmt.format(Date(syncAt)) else "--"
         val origin=if(settings.manualMode in 1..3)"CONTROL LOCAL" else "PORTAL / HORARIOS"
         val module=if(mode==3)when(settings.smartApp){"queue"->"TURNOS";else->"SPORTS"} else "--"
-        return "2Cam Digital Signage · APK 0.4.11 DEBUG · API ${android.os.Build.VERSION.SDK_INT}\n" +
+        return "2Cam Digital Signage · APK 0.4.12 DEBUG · API ${android.os.Build.VERSION.SDK_INT}\n" +
             "Modo: ${mode(mode)} · Origen: $origin · Módulo: $module\n" +
+            "Control: ARRIBA×3 = Ajustes · ABAJO×3 = Sincronizar\n" +
             "Revisión: recibida r${received(c)} / guardada r${applied(c)} / efectiva r${effective(c)} (${mode(effectiveMode(c))})\n" +
             "Últ. sync $sync · $eventAt: ${lastEvent(c)}" +
             (if(lastError.isBlank())"" else "\nERROR: ${lastError.take(120)}") +

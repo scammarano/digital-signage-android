@@ -73,20 +73,60 @@ class MediaDeck(private val stage:FrameLayout,private val cache:CacheManager,pri
             }
         }
     }
+
+    /** Crossfade time and image zoom movement are independently configurable. */
     private fun switchTo(box:FrameLayout,params:FrameLayout.LayoutParams,item:JSONObject,video:VideoView?){
         val effect=item.optString("transition","fade")
-        val duration=item.optLong("transition_ms",600).coerceIn(0,3000)
-        val prev=current;val prevVideo=currentVideo
+        val slideMs=item.optLong("duration",10).coerceIn(1L,3600L)*1000L
+        val crossfade=item.optLong("transition_ms",600L).coerceIn(0L,5000L)
+            .coerceAtMost(slideMs/2)
+        val prev=current
+        val prevVideo=currentVideo
         stage.addView(box,params)
-        if(effect=="cut"||prev==null||duration==0L){box.alpha=1f;stage.removeView(prev);if(prevVideo!=null)prevVideo.stopPlayback()}
-        else{
-          box.alpha=0f
-          if(effect=="slide-left"){box.translationX=stage.width.toFloat();box.animate().translationX(0f).alpha(1f).setDuration(duration).start()}
-          else if(effect=="slide-right"){box.translationX=-stage.width.toFloat();box.animate().translationX(0f).alpha(1f).setDuration(duration).start()}
-          else if(effect=="zoom"){box.scaleX=1.06f;box.scaleY=1.06f;box.animate().scaleX(1f).scaleY(1f).alpha(1f).setDuration(duration).start()}
-          else box.animate().alpha(1f).setDuration(duration).start()
-          prev.animate().alpha(0f).setDuration(duration).withEndAction{stage.removeView(prev);prevVideo?.stopPlayback()}.start()
+        if(effect=="zoom" && video==null){
+            val child=box.getChildAt(0)
+            val raw=item.optDouble("zoom_percent",20.0)
+            val percent=(if(raw.isNaN())20.0 else raw).coerceIn(0.0,60.0)
+            val factor=1f+(percent/100.0).toFloat()
+            val direction=item.optString("zoom_direction","in")
+            val from=if(direction=="out")factor else 1f
+            val to=if(direction=="out")1f else factor
+            val defaultZoomMs=maxOf(1800L,item.optLong("transition_ms",600L)*4L)
+            val zoomMs=item.optLong("zoom_duration_ms",defaultZoomMs)
+                .coerceIn(300L,20000L).coerceAtMost(slideMs)
+            child?.apply{
+                scaleX=from;scaleY=from
+                animate().scaleX(to).scaleY(to).setDuration(zoomMs)
+                    .setInterpolator(android.view.animation.LinearInterpolator()).start()
+            }
+            box.alpha=if(prev==null || crossfade==0L)1f else 0f
+            if(prev!=null && crossfade>0L)box.animate().alpha(1f).setDuration(crossfade).start()
+        }else if(effect=="cut" || prev==null || crossfade==0L){
+            box.alpha=1f
+        }else{
+            box.alpha=0f
+            when(effect){
+                "slide-left"->{
+                    box.translationX=stage.width.toFloat()
+                    box.animate().translationX(0f).alpha(1f).setDuration(crossfade).start()
+                }
+                "slide-right"->{
+                    box.translationX=-stage.width.toFloat()
+                    box.animate().translationX(0f).alpha(1f).setDuration(crossfade).start()
+                }
+                else->box.animate().alpha(1f).setDuration(crossfade).start()
+            }
         }
-        current=box;currentVideo=video
+        if(prev!=null){
+            if(effect=="cut" || crossfade==0L){
+                stage.removeView(prev);prevVideo?.stopPlayback()
+            }else{
+                prev.animate().alpha(0f).setDuration(crossfade).withEndAction{
+                    stage.removeView(prev);prevVideo?.stopPlayback()
+                }.start()
+            }
+        }
+        current=box
+        currentVideo=video
     }
 }

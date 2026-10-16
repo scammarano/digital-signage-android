@@ -119,9 +119,56 @@ class MainActivity : Activity() {
     }
     override fun onDestroy(){ui.removeCallbacks(tick);debugHud.clear();deck?.clear();worker.shutdownNow();super.onDestroy()}
     override fun onResume(){super.onResume();refreshDebugHud();if(::settings.isInitialized && !recoveryMode && !settings.diagnosticMode && !startingSplash && token.load()!=null){lastSync=0L;sync();}}
+
+    private var shortcutKey=0
+    private var shortcutCount=0
+    private var shortcutLastAt=0L
+
+    /**
+     * Dispatch before any focused player/overlay child consumes DPAD events.
+     * Three UP key presses open PIN-protected settings.
+     * Three DOWN key presses force a background manifest refresh.
+     */
+    override fun dispatchKeyEvent(event:KeyEvent):Boolean {
+        if(event.action==KeyEvent.ACTION_DOWN && event.repeatCount==0 &&
+            activeMode in 1..3 &&
+            (event.keyCode==KeyEvent.KEYCODE_DPAD_UP || event.keyCode==KeyEvent.KEYCODE_DPAD_DOWN)){
+            val now=android.os.SystemClock.uptimeMillis()
+            shortcutCount=if(shortcutKey==event.keyCode && now-shortcutLastAt<=2500L)
+                shortcutCount+1 else 1
+            shortcutLastAt=now;shortcutKey=event.keyCode
+            if(shortcutCount>=3){
+                shortcutCount=0
+                if(event.keyCode==KeyEvent.KEYCODE_DPAD_UP){
+                    logs.record("info","remote_shortcut","Triple ARRIBA · Abrir configuración")
+                    openSettings()
+                }else{
+                    logs.record("info","remote_shortcut","Triple ABAJO · Sincronización manual")
+                    android.widget.Toast.makeText(this,"Buscando cambios de programación…",
+                        android.widget.Toast.LENGTH_SHORT).show()
+                    sync()
+                }
+                return true
+            }
+        }else if(event.action==KeyEvent.ACTION_DOWN && event.repeatCount==0){
+            shortcutCount=0
+        }
+        return super.dispatchKeyEvent(event)
+    }
     override fun onKeyDown(keyCode:Int,event:KeyEvent?):Boolean {
-        if(keyCode==KeyEvent.KEYCODE_MENU || (keyCode==KeyEvent.KEYCODE_DPAD_CENTER && (event?.isLongPress==true))){openSettings();return true}
+        if(keyCode==KeyEvent.KEYCODE_MENU){
+            openSettings();return true
+        }
+        if(keyCode==KeyEvent.KEYCODE_DPAD_CENTER && event?.isLongPress==true){
+            openSettings();return true
+        }
         return super.onKeyDown(keyCode,event)
+    }
+    override fun onKeyLongPress(keyCode:Int,event:KeyEvent?):Boolean {
+        if(keyCode==KeyEvent.KEYCODE_DPAD_CENTER && activeMode in 1..3){
+            openSettings();return true
+        }
+        return super.onKeyLongPress(keyCode,event)
     }
     private fun checkAppUpdates(force:Boolean=false) {
         if(!::settings.isInitialized || token.load()==null)return
@@ -280,9 +327,11 @@ class MainActivity : Activity() {
     private fun stopOverlay(){if(overlayRunning){stopService(Intent(this,OverlayService::class.java));overlayRunning=false}}
     private fun selectPlaylist(){
         val model=manifest?:return
-        val list=model.entries();val ids=StringBuilder()
-        for(i in 0 until list.length()){val item=list.optJSONObject(i);ids.append(item?.optString("sha256")).append('/').append(item?.optInt("duration")).append(';')}
-        val fingerprint="${model.activeMode(settings)}:$ids"
+
+        // The old fingerprint ignored transition, zoom, layout and item order.
+        // The full selected playlist also detects visual-only changes.
+        val list=model.entries()
+        val fingerprint="${model.activeMode(settings)}:${model.json.optString("orientation")}:${list.toString()}"
         if(fingerprint==playlistIdentity)return
         playlistIdentity=fingerprint;entries=list;index=0;deck?.clear()
         if(entries.length()>0)advance() else status?.apply{visibility=View.VISIBLE;text="Sin contenido. Asigna una lista en el portal."}
@@ -317,7 +366,11 @@ class MainActivity : Activity() {
             val nextMode=model.activeMode(settings)
             if(nextMode!=activeMode)showMode() else if(activeMode==1||activeMode==3)selectPlaylist()
         }
-        if(System.currentTimeMillis()-lastSync>settings.syncMinutes*60000L)sync()
+
+        // During an active test, query for changed playlist definitions every ~15s.
+        // Normal playback preserves the configured interval; control requests are polled separately.
+        val refreshMs=if(settings.debugHudEnabled)15000L else settings.syncMinutes*60000L
+        if(System.currentTimeMillis()-lastSync>=refreshMs)sync()
         if(System.currentTimeMillis()-lastControlPoll>=15000L)checkRemoteSync()
         checkAppUpdates()
         if(activeMode==3&&System.currentTimeMillis()-lastLivePoll>settings.smartPollSec*1000L)pollLive()
@@ -349,6 +402,11 @@ class MainActivity : Activity() {
             }catch(e:Exception){logs.record("warn","control",e.javaClass.simpleName,e.message?:"")}
         }
     }
+
+    private fun playbackManifestKey(obj:JSONObject):String {
+        val fields=listOf("orientation","timezone","schedules","fallback","mode_blocks","device_options")
+        return fields.joinToString("|"){key->obj.opt(key)?.toString()?:""}
+    }
     private fun sync(){val secret=token.load()?:return;if(syncInFlight)return;syncInFlight=true;lastSync=System.currentTimeMillis()
         logs.record("info","sync","Inicio de sincronización")
         worker.execute{
@@ -370,8 +428,26 @@ class MainActivity : Activity() {
                 }
                 val obj=api.manifest()
                 logs.record("info","manifest","Programación recibida","schema=${obj.optInt("schema_version")}; device=${obj.optInt("device_id")}")
-                cache.sync(api,obj){msg->ui.post{status?.apply{visibility=View.VISIBLE;text=msg}}}
-                logs.record("info","sync","Medios validados; programación activada")
+
+                val cached=cache.active()
+                val changed=cached==null || playbackManifestKey(cached)!=playbackManifestKey(obj) ||
+                    ManifestModel(obj).allMedia().any { item->
+                        val file=cache.mediaFile(item.optString("sha256"))
+                        !file.isFile || file.length()!=item.optLong("size",-1L)
+                    }
+                if(changed){
+                    cache.sync(api,obj){msg->
+                        ui.post{status?.apply{visibility=View.VISIBLE;text=msg}}
+                    }
+                    logs.record("info","playlist_changed","Programación actualizada en caliente",
+                        "items=${ManifestModel(obj).entries().length()}")
+                    if(settings.debugHudEnabled)ui.post{
+                        android.widget.Toast.makeText(this,"Nueva lista aplicada sin reiniciar",
+                            android.widget.Toast.LENGTH_SHORT).show()
+                    }
+                }else if(settings.debugHudEnabled){
+                    logs.record("info","playlist_unchanged","Consulta realizada, sin cambios")
+                }
                 val pending=remoteControlRevision
                 if(pending>settings.lastControlVersion) {
                     try{
@@ -381,7 +457,7 @@ class MainActivity : Activity() {
                 }
                 val model=ManifestModel(obj)
                 ui.post{manifest=model;lastLive=model.widget();syncInFlight=false;showMode();selectPlaylist();drawLiveBoard();status?.postDelayed({status?.visibility=View.GONE},3500)}
-                api.heartbeat(JSONObject().put("app_version","0.4.10").put("active_mode",model.activeMode(settings))
+                api.heartbeat(JSONObject().put("app_version","0.4.12-debug").put("active_mode",model.activeMode(settings))
                  .put("cached_media",cache.countMedia()).put("free_storage_bytes",cache.freeBytes()).put("last_error",lastError.take(200)))
             }catch(e:Exception){lastError=e.message?:"Error de sincronización"
                 logs.record("error","sync",e.javaClass.simpleName,lastError)

@@ -43,6 +43,9 @@ class SettingsActivity:Activity(){
     private fun showSettings(){root=ScreenStyles.column(this)
         root.addView(ScreenStyles.label(this,"2CAM DIGITAL SIGNAGE · CONFIGURACIÓN",28f))
         root.addView(ScreenStyles.label(this,"Ajustes de este equipo, no modifican otras pantallas",16f))
+        root.addView(ScreenStyles.label(this,
+            "En reproducción: ARRIBA 3 veces abre este menú; ABAJO 3 veces sincroniza. " +
+            "También funciona MENU cuando el control dispone de esa tecla.",16f))
         root.addView(ScreenStyles.label(this,"Android ${android.os.Build.VERSION.RELEASE} (API ${android.os.Build.VERSION.SDK_INT}) · ${LegacyProfile.description()}",14f))
         root.addView(ScreenStyles.label(this,"Modo seleccionado: "+arrayOf("Según portal/horarios","Cartelera","Overlay","Pantalla inteligente")[config.manualMode],18f))
         root.addView(ScreenStyles.label(this,"El botón verde indica el modo seleccionado.",15f))
@@ -97,16 +100,10 @@ class SettingsActivity:Activity(){
         field("Alto franja Overlay (%)",config.overlayHeightPct.toString()){config.overlayHeightPct=it.toInt()}
         field("Opacidad Overlay (%)",config.overlayOpacity.toString()){config.overlayOpacity=it.toInt()}
         root.addView(ScreenStyles.label(this,"PANTALLA INTELIGENTE",24f))
-        root.addView(ScreenStyles.button(this,"SPORTS LOCAL · tablet directa al Fire (sin PC)"){
-            startActivity(Intent(this,SportsActivity::class.java))
-        })
         select("Aplicación",config.smartApp,listOf("queue" to "Sala de espera / Turnos","scoreboard" to "Marcador / Puntos")){config.smartApp=it}
         field("Área superior inteligente (%)",config.smartHeaderPct.toString()){config.smartHeaderPct=it.toInt()}
         field("Refrescar Turnos / Marcador (seg)",config.smartPollSec.toString()){config.smartPollSec=it.toInt()}
         toggle("Aviso sonoro al llamar turno",config.smartSound){config.smartSound=it}
-        root.addView(ScreenStyles.label(this,"PRUEBAS Y TELEMETRÍA",24f))
-        toggle("DEBUG: versión, modo y confirmaciones sobre el contenido",config.debugHudEnabled){config.debugHudEnabled=it}
-        root.addView(ScreenStyles.label(this,"El modo DEBUG es local, sin alterar las campañas ni la configuración del portal.",15f))
         root.addView(ScreenStyles.label(this,"GENERAL",24f))
         select("Modo principal",config.primaryMode.toString(),listOf("1" to "Cartelera","2" to "Overlay","3" to "Pantalla inteligente")){choice->
             val mode=choice.toInt()

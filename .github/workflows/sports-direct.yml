@@ -1,7 +1,7 @@
 name: Fire Sports direct LAN APK
 on:
   push:
-    branches: ['feat/sports-direct-lan', 'feat/config-ack-debug-v0411']
+    branches: ['feat/sports-direct-lan', 'feat/config-ack-debug-v0411', 'feat/player-playlists-remote-v0412']
   workflow_dispatch:
 permissions:
   contents: read
