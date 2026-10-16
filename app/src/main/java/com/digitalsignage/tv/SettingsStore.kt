@@ -181,7 +181,7 @@ class SettingsStore(private val context: Context) {
     private var catalogCache:org.json.JSONObject?=null
     @Synchronized fun prepareFormData(){
         schemaFields()
-        catalogCache=CacheManager(context,this).active()?.optJSONObject("playlist_catalog")
+        catalogCache=CacheManager(context,this).active()?.let{ManifestModel(it).catalog()}
         catalogUntil=android.os.SystemClock.elapsedRealtime()+5000L
     }
     fun activationError(mode:Int,snapshot:org.json.JSONObject=publicSnapshot()):String? =

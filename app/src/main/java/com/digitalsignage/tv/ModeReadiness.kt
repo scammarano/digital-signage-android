@@ -24,7 +24,7 @@ object ModeReadiness {
             return "Cartelera: no hay playlist de pantalla completa disponible en la programación actual"
         }
         if(id<=0)return "$name: asigna una playlist para ${layout(config,mode)} antes de activar"
-        val list=model.json.optJSONObject("playlist_catalog")?.optJSONObject(id.toString())
+        val list=model.catalog().optJSONObject(id.toString())
             ?:return "$name: la playlist #$id no está disponible. Sincroniza el catálogo"
         if(list.optString("layout")!=layout(config,mode))return "$name: la playlist no corresponde al diseño seleccionado"
         if(list.optString("orientation")!="any" && list.optString("orientation")!=model.json.optString("orientation"))return "$name: orientación incompatible"

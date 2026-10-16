@@ -45,7 +45,7 @@ class ManifestModel(val json:JSONObject){
             return full
         }
         if(id==0)return JSONArray()
-        val catalog=json.optJSONObject("playlist_catalog")?:return JSONArray()
+        val catalog=catalog()
         val list=catalog.optJSONObject(id.toString())?:return JSONArray()
         val layout=settings.modeLayout(mode)
         if(list.optString("layout")!=layout)return JSONArray()
@@ -66,5 +66,19 @@ class ManifestModel(val json:JSONObject){
         return out.values.toList()
     }
     fun widget():JSONObject = json.optJSONObject("live")?:JSONObject()
+    /** Legacy portals expose one default playlist; still require explicit per-mode assignment. */
+    fun catalog():JSONObject {
+        json.optJSONObject("playlist_catalog")?.let{return it}
+        val result=JSONObject();val fallback=json.optJSONObject("fallback")?:return result
+        val id=fallback.optInt("playlist_id")
+        if(id<=0)return result
+        val items=fallback.optJSONArray("items")?:JSONArray()
+        var images=0
+        for(i in 0 until items.length())if(items.optJSONObject(i)?.optString("mime")?.startsWith("image/")==true)images++
+        result.put(id.toString(),JSONObject().put("id",id).put("name",fallback.optString("playlist_name","Playlist #$id"))
+            .put("layout",fallback.optString("layout","fullscreen")).put("orientation",fallback.optString("orientation",json.optString("orientation")))
+            .put("items",items).put("item_count",items.length()).put("image_count",images))
+        return result
+    }
 }
 

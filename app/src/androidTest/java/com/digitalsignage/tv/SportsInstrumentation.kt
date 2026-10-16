@@ -102,6 +102,11 @@ class SportsInstrumentation:Instrumentation(){
             val manifest=JSONObject().put("schema_version",3).put("orientation","landscape").put("playlist_catalog",JSONObject().put("91",list))
             val model=ManifestModel(manifest)
             check(ModeReadiness.error(config,model,2)==null)
+            val legacy=ManifestModel(JSONObject().put("orientation","landscape").put("fallback",JSONObject()
+                .put("playlist_id",91).put("playlist_name","Franja heredada").put("layout","bottom").put("orientation","landscape")
+                .put("items",org.json.JSONArray().put(item))))
+            check(ModeReadiness.error(config,legacy,2)==null){"Explicit compatible legacy assignment rejected"}
+            check(ModeReadiness.error(JSONObject(config.toString()).put("overlay_playlist_bottom",0),legacy,2)!=null){"Implicit Cartelera inheritance accepted"}
             list.put("image_count",0);check(ModeReadiness.error(config,model,2)!=null){"Overlay without image accepted"};list.put("image_count",1)
             check(StartupPolicy.mode(settings,model)==2 && StartupPolicy.background(2))
             check(!StartupPolicy.background(1) && !StartupPolicy.background(3))
