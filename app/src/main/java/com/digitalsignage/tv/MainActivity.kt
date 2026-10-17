@@ -75,6 +75,12 @@ class MainActivity : Activity() {
     private var lastSmartApp=""
     private var lastSmartHeaderPct=0
     private var lastCallSequence=-1L
+    private val turnosBinding by lazy{TurnosBinding(this)}
+    private val turnosLocal:TurnosConsumer by lazy{TurnosConsumer(this,{
+        if(activeMode==3 && turnosBinding.enabled){mode3Header?.text=turnosLocal.board();refreshLiveAdvertising()}
+    },{payload->announceTurnos(payload)})}
+    private var turnosSpeech:android.speech.tts.TextToSpeech?=null
+    private var turnosVoiceReady=false
     private val debugHud by lazy {DeviceDebugHud(this)}
     private var lastSelectedMode=-1
     private fun refreshDebugHud() {
@@ -120,8 +126,9 @@ class MainActivity : Activity() {
             ui.postDelayed(tick,1000)
         }
     }
-    override fun onDestroy(){ui.removeCallbacks(tick);debugHud.clear();deck?.clear();worker.shutdownNow();super.onDestroy()}
-    override fun onResume(){super.onResume();refreshDebugHud();if(::settings.isInitialized && !recoveryMode && !settings.diagnosticMode && !startingSplash && token.load()!=null){lastSync=0L;sync();}}
+    override fun onPause(){turnosLocal.stop();super.onPause()}
+    override fun onDestroy(){turnosLocal.close();turnosSpeech?.shutdown();ui.removeCallbacks(tick);debugHud.clear();deck?.clear();worker.shutdownNow();super.onDestroy()}
+    override fun onResume(){super.onResume();refreshDebugHud();if(activeMode==3)drawLiveBoard();if(::settings.isInitialized && !recoveryMode && !settings.diagnosticMode && !startingSplash && token.load()!=null){lastSync=0L;sync();}}
 
     private var shortcutKey=0
     private var shortcutCount=0
@@ -255,6 +262,7 @@ class MainActivity : Activity() {
         if(mode==activeMode && lastRenderSettings==renderSettings && (stage!=null || mode==2))return
         lastRenderSettings=renderSettings;liveAdCycleStartedAt=System.currentTimeMillis()
         activeMode=mode;playlistIdentity="";deck?.clear();deck=null;stage=null;mode3Header=null
+        if(mode!=3)turnosLocal.stop()
         when(mode){1->showSignage(false);2->showOverlayControl();3,4->showSignage(true);else->showDisabled()}
         if(mode!=lastSelectedMode){
             DeviceDebug.record(this,logs,"started",settings.remoteRevision,
@@ -290,7 +298,7 @@ class MainActivity : Activity() {
         val mediaW=when(layout){"side"->w*settings.mediaFormatPercent("side")/100;"half_vertical"->w/2;else->w}
         val mediaH=when(layout){"bottom"->h*settings.mediaFormatPercent("bottom")/100;"half_horizontal"->h/2;else->h}
         if(smart){
-            val label=ScreenStyles.label(this,"Esperando aplicación…",26f).apply{gravity=Gravity.CENTER;setBackgroundColor(0xFF152845.toInt())}
+            val label=ScreenStyles.label(this,"Esperando aplicación…",26f).apply{gravity=Gravity.CENTER;setBackgroundColor(0xFF152845.toInt());tag="live-board"}
             mode3Header=label
             val boardW=if(layout in listOf("side","half_vertical"))w-mediaW else w
             val boardH=if(layout in listOf("bottom","half_horizontal"))h-mediaH else h
@@ -300,6 +308,20 @@ class MainActivity : Activity() {
         // Full screen advertising is a temporary takeover, preserving the live widget behind it.
         root.addView(media,FrameLayout.LayoutParams(mediaW,mediaH,Gravity.BOTTOM or Gravity.RIGHT))
         stage=media;deck=MediaDeck(media,cache,if(smart)false else settings.videoAudio,smart)
+        media.tag="advertising-zone"
+        // Requested orientation can complete after onCreate; size zones from the actual laid-out window.
+        root.addOnLayoutChangeListener{_,left,top,right,bottom,oldLeft,oldTop,oldRight,oldBottom->
+            val width=right-left;val height=bottom-top
+            if(width>0&&height>0&&(width!=oldRight-oldLeft||height!=oldBottom-oldTop)){
+                val mw=when(layout){"side"->width*settings.mediaFormatPercent("side")/100;"half_vertical"->width/2;else->width}
+                val mh=when(layout){"bottom"->height*settings.mediaFormatPercent("bottom")/100;"half_horizontal"->height/2;else->height}
+                media.layoutParams=FrameLayout.LayoutParams(mw,mh,Gravity.BOTTOM or Gravity.RIGHT)
+                if(smart)mode3Header?.layoutParams=FrameLayout.LayoutParams(
+                    if(layout in listOf("side","half_vertical"))width-mw else width,
+                    if(layout in listOf("bottom","half_horizontal"))height-mh else height,
+                    Gravity.TOP or Gravity.LEFT)
+            }
+        }
         val hud=ScreenStyles.label(this,"Digital Signage",13f).apply{setBackgroundColor(0x990A1424.toInt());gravity=Gravity.END}
         status=hud
         if(settings.signageShowHud && settings.signageHudSeconds>0){
@@ -311,6 +333,13 @@ class MainActivity : Activity() {
         selectPlaylist()
     }
     private fun drawLiveBoard(){
+        if(activeMode==3 && turnosBinding.enabled){
+            turnosLocal.start();mode3Header?.text=turnosLocal.board()
+            if(turnosBinding.audio && turnosSpeech==null){
+                turnosSpeech=android.speech.tts.TextToSpeech(this){status->if(status==android.speech.tts.TextToSpeech.SUCCESS)turnosVoiceReady=(turnosSpeech?.setLanguage(java.util.Locale("es"))?:-1)>=0}
+            }
+            return
+        }
         if(activeMode==4 && settings.settingString("scoreboard_source")=="lan"){
             SportsRuntime.start(this);mode3Header?.text=SportsRuntime.board(this)
             if(SportsRuntime.error.isBlank() && (DeviceDebug.effective(this)!=settings.remoteRevision || DeviceDebug.effectiveMode(this)!=4))
@@ -391,6 +420,7 @@ class MainActivity : Activity() {
     }
     private fun refreshLiveAdvertising(){
         if(activeMode !in 3..4 || settings.modeLayout(activeMode)!="fullscreen")return
+        if(activeMode==3 && turnosBinding.enabled && (turnosLocal.snapshot?.optJSONArray("active_calls")?.length()?:0)>0){stage?.visibility=View.GONE;return}
         val prefix=if(activeMode==4)"scoreboard" else "queue"
         val interval=settings.settingInt(prefix+"_ad_interval_sec")*1000L
         val duration=settings.settingInt(prefix+"_ad_duration_sec")*1000L
@@ -420,7 +450,7 @@ class MainActivity : Activity() {
             else if(System.currentTimeMillis()-lastLivePoll>settings.smartPollSec*1000L)pollLive()
         }
     }
-    private fun pollLive(){val secret=token.load()?:return;lastLivePoll=System.currentTimeMillis()
+    private fun pollLive(){if(activeMode==3&&turnosBinding.enabled)return;val secret=token.load()?:return;lastLivePoll=System.currentTimeMillis()
         worker.execute{try{val live=SignageApi(settings.portalUrl,secret).live().optJSONObject("live")?:return@execute
             ui.post{
                 if(settings.smartSound && activeMode==3 && live.optString("widget_type")=="queue"){
@@ -436,6 +466,14 @@ class MainActivity : Activity() {
                 }
                 lastLive=live;drawLiveBoard()
             }}catch(_:Exception){}}
+    }
+    private fun announceTurnos(payload:JSONObject){
+        if(activeMode!=3||!turnosBinding.enabled||!turnosBinding.audio)return
+        try{
+            val tone=android.media.ToneGenerator(android.media.AudioManager.STREAM_NOTIFICATION,65)
+            tone.startTone(android.media.ToneGenerator.TONE_PROP_BEEP,160);ui.postDelayed({tone.release()},400)
+            if(turnosVoiceReady)turnosSpeech?.speak("Turno ${payload.getString("ticket_label")}, ${payload.getString("counter_label")}",android.speech.tts.TextToSpeech.QUEUE_ADD,null)
+        }catch(_:Exception){}
     }
     private fun checkRemoteSync() {
         val secret=token.load()?:return;lastControlPoll=System.currentTimeMillis()
@@ -518,4 +556,5 @@ class MainActivity : Activity() {
         setContentView(box)
     }
 }
+
 
