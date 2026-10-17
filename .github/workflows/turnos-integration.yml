@@ -16,7 +16,7 @@ jobs:
       - uses: actions/checkout@v4
         with:
           repository: scammarano/2cam-turnos
-          ref: 7abfc3eb57cc0d68725a7d7f0746f2c7a75e1983
+          ref: 67f3782f3a32efdda97c49c28698a72f3f150a14
           path: turnos-authority
       - uses: actions/setup-java@v4
         with:

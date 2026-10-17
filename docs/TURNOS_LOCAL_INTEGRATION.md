@@ -24,7 +24,7 @@ Workflow `turnos-integration.yml`: pruebas existentes de Sports/formatos/arranqu
 
 La instrumentación prueba enlace nativo protegido por PIN, rechazo de rol operador, ticket/puesto junto a imagen publicitaria real de caché, desconexión conservando último estado, reconexión, restauración de autoridad desde disco, revocación y rechazo de otra identidad. Es un servidor real en el mismo emulador usando las clases originales, no una prueba física de dos APK en dos dispositivos. Mando, multicast, audio y latencia end-to-end física siguen pendientes.
 
-La prueba detectó `EADDRINUSE` al reiniciar inmediatamente el listener de Turnos. El checkout de autoridad queda fijado a `7abfc3eb57cc0d68725a7d7f0746f2c7a75e1983`, con la corrección de `SO_REUSEADDR` antes del bind ([Turnos PR 1](https://github.com/scammarano/2cam-turnos/pull/1)). Incluye cuatro restauraciones seguidas verificando una lectura HTTP tras cada una. Esa corrección necesita una siguiente APK Turnos; no está dentro del binario 0.2.0 ni de su sobre RSA ya publicado.
+La prueba detectó `EADDRINUSE` al reiniciar inmediatamente el listener de Turnos. El checkout de autoridad queda fijado a `67f3782f3a32efdda97c49c28698a72f3f150a14`, con `SO_REUSEADDR` antes del bind y espera acotada del hilo accept al cerrar ([Turnos PR 1](https://github.com/scammarano/2cam-turnos/pull/1)). Incluye cuatro restauraciones seguidas verificando una lectura HTTP tras cada una. Esa corrección necesita una siguiente APK Turnos; no está dentro del binario 0.2.0 ni de su sobre RSA ya publicado.
 
 ## Firma y entrega
 
