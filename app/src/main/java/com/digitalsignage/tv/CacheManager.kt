@@ -14,9 +14,11 @@ class CacheManager(private val context:Context,private val settings:SettingsStor
     fun active():JSONObject?=parse(File(internal,"active.json"))
     private fun parse(file:File):JSONObject?=try{if(file.isFile)JSONObject(file.readText())else null}catch(_:Exception){null}
     fun mediaFile(sha:String):File=File(settings.cacheDirectory(),sha)
+    fun formatPercent(layout:String):Int=MediaFormats.percent(active()?.optJSONObject("media_formats"),layout)
     fun countMedia():Int=settings.cacheDirectory().listFiles()?.count{it.isFile&&it.name.matches(Regex("[a-f0-9]{64}"))}?:0
     fun freeBytes():Long=StatFs(settings.cacheDirectory().absolutePath).availableBytes
     fun sync(api:SignageApi,manifest:JSONObject,onProgress:(String)->Unit):Int = synchronized(syncLock) {
+        MediaFormats.validate(manifest.optJSONObject("media_formats"))
         val model=ManifestModel(manifest);val list=model.allMedia();val cache=settings.cacheDirectory()
         val expected=list.sumOf{maxOf(it.optLong("size",0),0)}
         val limit=settings.cacheMb.toLong()*1024L*1024L
@@ -72,3 +74,4 @@ class CacheManager(private val context:Context,private val settings:SettingsStor
         return done
     }
 }
+

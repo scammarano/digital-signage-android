@@ -14,16 +14,28 @@ class DeviceConfigSync(
 ){
     fun poll():Boolean {
         val reply=api.desiredConfig()
-        if(reply.optInt("schema")!=1)throw IllegalStateException("Esquema de configuración no soportado")
+        if(reply.optInt("schema") !in 1..2)throw IllegalStateException("Esquema de configuración no soportado")
         val wanted=reply.getLong("revision")
         val changed=wanted>settings.remoteRevision
         if(changed)audit("received",wanted,"descargada desde portal")
-        val desired=reply.getJSONObject("settings")
+        val desired=if(reply.optInt("schema")==1)settings.migrateV1(reply.getJSONObject("settings")) else reply.getJSONObject("settings")
+        fun reportSettings():JSONObject {
+            if(reply.optInt("schema")==2)return settings.publicSnapshot()
+            val actual=settings.publicSnapshot();val old=JSONObject();val keys=reply.getJSONObject("settings").keys()
+            while(keys.hasNext()){val k=keys.next();when(k){
+                "smart_app"->old.put(k,if(settings.primaryMode==4)"scoreboard" else "queue")
+                "smart_header_pct"->old.put(k,settings.smartHeaderPct)
+                "overlay_layout"->old.put(k,if(settings.overlayLayout=="side")"right" else settings.overlayLayout)
+                "primary_mode"->old.put(k,if(settings.primaryMode==4)3 else settings.primaryMode)
+                "enabled_modes"->old.put(k,(settings.enabledModes and 7) or (if(settings.enabledModes and 8!=0)4 else 0))
+                else->if(actual.has(k))old.put(k,actual.get(k))
+            }};return old
+        }
         val clean=try{settings.validateSettings(desired)}catch(e:Exception){
             audit("rejected",wanted,e.message?:"opciones inválidas")
             try{
                 api.reportConfig(JSONObject().put("revision",settings.remoteRevision)
-                    .put("status","rejected").put("settings",settings.publicSnapshot())
+                    .put("status","rejected").put("settings",reportSettings())
                     .put("error",(e.message?:"validación").take(150)))
             }catch(_:Exception){}
             throw e
@@ -38,7 +50,7 @@ class DeviceConfigSync(
                 audit("rejected",wanted,e.message?:"error local")
                 try {
                     api.reportConfig(JSONObject().put("revision",settings.remoteRevision)
-                        .put("status","rejected").put("settings",settings.publicSnapshot())
+                        .put("status","rejected").put("settings",reportSettings())
                         .put("error",(e.message?:"Error al aplicar").take(150)))
                 }catch(_:Exception){}
                 throw e
@@ -46,9 +58,10 @@ class DeviceConfigSync(
         }
         val applied=settings.remoteRevision
         api.reportConfig(JSONObject().put("revision",applied).put("status","applied")
-            .put("settings",settings.publicSnapshot())
+            .put("settings",reportSettings())
             .put("sha256",reply.optString("sha256")))
         if(changed)audit("reported",applied,"confirmación aceptada por portal")
         return applied==wanted
     }
 }
+

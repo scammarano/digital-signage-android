@@ -25,9 +25,16 @@ import java.util.concurrent.Executors
 
 /** Opt-in experimental overlay. Not supported above secure/protected apps or external HDMI. */
 class OverlayService:Service(){
+    companion object {
+        const val ACTION_PREVIEW="com.digitalsignage.tv.PREVIEW_OVERLAY"
+        @Volatile var lastShownAt=0L;private set
+        @Volatile var lastHiddenAt=0L;private set
+    }
     private val handler=Handler(Looper.getMainLooper());private val worker=Executors.newSingleThreadExecutor()
     private lateinit var settings:SettingsStore;private lateinit var cache:CacheManager
     private var wm:WindowManager?=null;private var current:View?=null;private var nextAdAt=0L;private var hideAt=0L
+    private var previewUntil=0L
+    private var dismiss:Runnable?=null
     private var lastFetch=0L;private var index=0;private var syncing=false
     private var lastDebugConfigPoll=0L
     private var debugText:TextView?=null
@@ -77,7 +84,13 @@ class OverlayService:Service(){
         handler.post(ticker)
     }
     override fun onBind(intent:Intent?):IBinder?=null
-    override fun onStartCommand(intent:Intent?,flags:Int,startId:Int):Int=START_STICKY
+    override fun onStartCommand(intent:Intent?,flags:Int,startId:Int):Int {
+        if(intent?.action==ACTION_PREVIEW){
+            nextAdAt=System.currentTimeMillis()
+            previewUntil=nextAdAt+settings.overlayDurationSec*1000L+2000L
+        }
+        return START_STICKY
+    }
     override fun onDestroy(){handler.removeCallbacks(ticker);hide();
         debugText?.let{try{wm?.removeView(it)}catch(_:Exception){}}
         debugText=null
@@ -87,7 +100,11 @@ class OverlayService:Service(){
         pollDebugConfig()
         if(!AndroidCompat.canOverlay(this)){hide();stopSelf();return}
         val model=cache.active()?.let{ManifestModel(it)}?:return
-        if(model.activeMode(settings)!=2){hide();stopSelf();return}
+        if(model.activeMode(settings)!=2 && System.currentTimeMillis()>=previewUntil){hide();stopSelf();return}
+        val readiness=ModeReadiness.error(settings.publicSnapshot(),model,2)
+        if(readiness!=null){
+            hide();DeviceDebug.record(this,DeviceLogs(this),"blocked",settings.remoteRevision,readiness)
+        }
         val now=System.currentTimeMillis()
         if(now-lastFetch>settings.syncMinutes*60000L&&!syncing){syncing=true;lastFetch=now
             worker.execute{
@@ -99,23 +116,24 @@ class OverlayService:Service(){
                         try{DeviceLogs(this).upload(api)}catch(_:Exception){}
                     }catch(_:Exception){}
                     cache.sync(api,api.manifest()){};
-                    api.heartbeat(JSONObject().put("app_version","0.4.8").put("active_mode",2).put("cached_media",cache.countMedia()).put("free_storage_bytes",cache.freeBytes()))
+                    api.heartbeat(JSONObject().put("app_version",BuildConfig.VERSION_NAME).put("active_mode",2).put("cached_media",cache.countMedia()).put("free_storage_bytes",cache.freeBytes()))
                 }catch(_:Exception){}finally{syncing=false}
             }
         }
-        if(current!=null){if(now>=hideAt)hide();return}
+        if(readiness!=null)return
+        if(current!=null){if(now>=hideAt)hide(true);return}
         // The current APK configuration owns Overlay policy independently of playlist layout.
         val interval=settings.overlayIntervalSec.toLong()*1000L
         if(nextAdAt==0L)nextAdAt=now+interval
         if(now<nextAdAt)return
-        val all=model.entries();val images=ArrayList<JSONObject>()
+        val all=model.entries(settings,2);val images=ArrayList<JSONObject>()
         for(i in 0 until all.length()){val item=all.optJSONObject(i)?:continue;if(item.optString("mime").startsWith("image/"))images.add(item)}
         if(images.isEmpty()){nextAdAt=now+interval;return}
         val item=images[index%images.size];index++
-        val duration=settings.overlayDurationSec.toLong()*1000L
-        show(item);hideAt=now+duration;nextAdAt=now+interval
+        val duration=minOf(settings.overlayDurationSec.toLong()*1000L,MediaTiming.durationMs(item))
+        show(item,duration);hideAt=now+duration;nextAdAt=now+interval
     }
-    private fun show(item:JSONObject){
+    private fun show(item:JSONObject,duration:Long){
         val file=cache.mediaFile(item.optString("sha256"));if(!file.isFile)return
         try {
             val opts=BitmapFactory.Options().apply{inJustDecodeBounds=true};BitmapFactory.decodeFile(file.path,opts)
@@ -126,7 +144,7 @@ class OverlayService:Service(){
             val screen=resources.displayMetrics;val width=screen.widthPixels;val height=screen.heightPixels
             val layout=settings.overlayLayout
             val w=when(layout){
-                "left","right"->(width*settings.overlayWidthPct/100f).toInt()
+                "left","right","side"->(width*settings.overlayWidthPct/100f).toInt()
                 "half_vertical"->width/2
                 else->width
             }.coerceAtLeast(1)
@@ -137,20 +155,39 @@ class OverlayService:Service(){
             }.coerceAtLeast(1)
             val gravity=when(layout){
                 "left"->Gravity.TOP or Gravity.LEFT
-                "right","half_vertical"->Gravity.TOP or Gravity.RIGHT
+                "right","side","half_vertical"->Gravity.TOP or Gravity.RIGHT
                 "top"->Gravity.TOP
                 else->Gravity.BOTTOM
             }
             val attrs=WindowManager.LayoutParams(w,h,AndroidCompat.overlayWindowType,
               WindowManager.LayoutParams.FLAG_NOT_FOCUSABLE or WindowManager.LayoutParams.FLAG_NOT_TOUCHABLE or WindowManager.LayoutParams.FLAG_LAYOUT_IN_SCREEN,PixelFormat.TRANSLUCENT).apply{this.gravity=gravity;this.alpha=settings.overlayOpacity/100f}
             val manager=wm?:return
-            manager.addView(frame,attrs);current=frame;frame.animate().alpha(1f).setDuration(500).start()
+            val offset=OverlayMotion.offset(layout,w,h)
+            frame.translationX=offset.first;frame.translationY=offset.second
+            manager.addView(frame,attrs);current=frame
+            frame.post{if(current===frame && frame.windowToken!=null)lastShownAt=System.currentTimeMillis()}
+            frame.animate().translationX(0f).translationY(0f).alpha(1f).setDuration(minOf(600L,duration/2))
+                .setInterpolator(android.view.animation.DecelerateInterpolator()).start()
+            dismiss=Runnable{if(current===frame)hide(duration>=1000L)}.also{handler.postDelayed(it,duration)}
             if(DeviceDebug.effective(this)!=settings.remoteRevision ||
                DeviceDebug.effectiveMode(this)!=2){
                 DeviceDebug.record(this,DeviceLogs(this),"effective",settings.remoteRevision,
                     "Publicidad Overlay mostrada en pantalla",2)
             }
-        }catch(_:Exception){hide()}
+        }catch(e:Exception){
+            DeviceDebug.record(this,DeviceLogs(this),"blocked",settings.remoteRevision,"Overlay: ${e.javaClass.simpleName} ${e.message?.take(120)}")
+            hide()
+        }
     }
-    private fun hide(){current?.let{try{wm?.removeView(it)}catch(_:Exception){}};current=null}
+    private fun hide(animated:Boolean=false){
+        dismiss?.let{handler.removeCallbacks(it)};dismiss=null
+        val view=current?:return;current=null
+        lastHiddenAt=System.currentTimeMillis()
+        val manager=wm?:return
+        fun remove(){try{manager.removeView(view)}catch(_:Exception){}}
+        if(!animated){view.animate().cancel();remove();return}
+        val offset=OverlayMotion.offset(settings.overlayLayout,view.width,view.height)
+        view.animate().translationX(offset.first).translationY(offset.second).alpha(0f).setDuration(350).withEndAction{remove()}.start()
+    }
 }
+

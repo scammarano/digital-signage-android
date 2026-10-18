@@ -24,7 +24,7 @@ object DeviceDebug {
     fun effective(c:Context)=prefs(c).getLong("effective_revision",0L)
     fun effectiveMode(c:Context)=prefs(c).getInt("effective_mode",0)
     fun lastEvent(c:Context)=prefs(c).getString("event","Sin eventos")?:"Sin eventos"
-    fun mode(mode:Int):String=when(mode){1->"CARTELERA";2->"OVERLAY";3->"PANTALLA INTELIGENTE";else->"SIN MODO"}
+    fun mode(mode:Int):String=when(mode){1->"CARTELERA";2->"OVERLAY";3->"TURNOS";4->"MARCADOR DEPORTIVO";else->"SIN MODO"}
     fun record(c:Context,logs:DeviceLogs,stage:String,revision:Long,detail:String="",runtimeMode:Int=0){
         val tag=when(stage){"received"->"RECIBIDO";"applied"->"GUARDADO";"reported"->"CONFIRMADO EN PORTAL";"started"->"MODO SELECCIONADO";
             "effective"->"EN EJECUCIÓN";"blocked"->"NO OPERATIVO";"rejected"->"RECHAZADO";else->stage.uppercase(Locale.US)}
@@ -36,7 +36,7 @@ object DeviceDebug {
             "applied"->e.putLong("applied_revision",revision)
             "effective"->{
                 e.putLong("effective_revision",revision)
-                if(runtimeMode in 1..3)e.putInt("effective_mode",runtimeMode)
+                if(runtimeMode in 1..4)e.putInt("effective_mode",runtimeMode)
             }
         }
         e.apply()
@@ -52,9 +52,9 @@ object DeviceDebug {
         val stamp=prefs(c).getLong("at",0L)
         val eventAt=if(stamp>0L)fmt.format(Date(stamp)) else "--"
         val sync=if(syncAt>0L)fmt.format(Date(syncAt)) else "--"
-        val origin=if(settings.manualMode in 1..3)"CONTROL LOCAL" else "PORTAL / HORARIOS"
-        val module=if(mode==3)when(settings.smartApp){"queue"->"TURNOS";else->"SPORTS"} else "--"
-        return "2Cam Digital Signage · APK 0.4.12 DEBUG · API ${android.os.Build.VERSION.SDK_INT}\n" +
+        val origin=if(settings.manualMode in 1..4)"CONTROL LOCAL" else "PORTAL / HORARIOS"
+        val module=when(mode){3->"TURNOS";4->"SPORTS";else->"--"}
+        return "2Cam Digital Signage · APK ${BuildConfig.VERSION_NAME} DEBUG · API ${android.os.Build.VERSION.SDK_INT}\n" +
             "Modo: ${mode(mode)} · Origen: $origin · Módulo: $module\n" +
             "Control: ARRIBA×3 = Ajustes · ABAJO×3 = Sincronizar\n" +
             "Revisión: recibida r${received(c)} / guardada r${applied(c)} / efectiva r${effective(c)} (${mode(effectiveMode(c))})\n" +
@@ -80,10 +80,11 @@ class DeviceDebugHud(private val activity:Activity) {
         }.also{view=it}
         if(tv.parent !== content){
             (tv.parent as? ViewGroup)?.removeView(tv)
-            content.addView(tv,FrameLayout.LayoutParams(-1,-2,Gravity.TOP))
+            content.addView(tv,FrameLayout.LayoutParams(-1,-2,Gravity.TOP).apply{val dm=activity.resources.displayMetrics;setMargins(dm.widthPixels/20,dm.heightPixels/20,dm.widthPixels/20,0)})
         }
         tv.text=text
         tv.bringToFront()
     }
     fun clear(){view?.let{(it.parent as? ViewGroup)?.removeView(it)};view=null}
 }
+

@@ -19,10 +19,11 @@ import javax.crypto.spec.GCMParameterSpec
 import javax.security.auth.x500.X500Principal
 
 /** Keystore AES-GCM on API 23+, Keystore RSA on API 19-22. No plaintext bearer token. */
-class SecureToken(private val context: Context) {
-    private val prefs=context.getSharedPreferences("signage_auth_v1", Context.MODE_PRIVATE)
-    private val aesAlias="signage_tv_pairing_token_aes_v1"
-    private val rsaAlias="signage_tv_pairing_token_rsa_legacy_v1"
+class SecureToken(private val context: Context, private val slot:String="pairing") {
+    init { require(slot.matches(Regex("[a-z0-9_]{1,32}"))) }
+    private val prefs=context.getSharedPreferences(if(slot=="pairing")"signage_auth_v1" else "signage_secret_$slot", Context.MODE_PRIVATE)
+    private val aesAlias=if(slot=="pairing")"signage_tv_pairing_token_aes_v1" else "signage_${slot}_aes_v1"
+    private val rsaAlias=if(slot=="pairing")"signage_tv_pairing_token_rsa_legacy_v1" else "signage_${slot}_rsa_v1"
     private fun aesKey():SecretKey {
         val ks=KeyStore.getInstance("AndroidKeyStore").apply{load(null)}
         (ks.getKey(aesAlias,null) as? SecretKey)?.let{return it}
@@ -82,3 +83,4 @@ class SecureToken(private val context: Context) {
     }
     fun clear(){prefs.edit().remove("token").commit()}
 }
+

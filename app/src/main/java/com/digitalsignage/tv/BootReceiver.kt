@@ -5,19 +5,39 @@ import android.content.BroadcastReceiver
 import android.content.Context
 import android.content.Intent
 
-/** Best-effort autostart: firmware may restrict background activity launches. */
-class BootReceiver : BroadcastReceiver() {
-    override fun onReceive(context: Context, intent: Intent?) {
-        if (intent?.action != Intent.ACTION_BOOT_COMPLETED) return
-        val settings = SettingsStore(context)
-        if (!settings.autoStart || settings.diagnosticMode || SecureToken(context).load() == null) return
-        try {
-            context.startActivity(Intent(context, MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
-        } catch (_: Exception) {}
-        try {
-            val mgr = context.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
-            mgr.notify(92, AndroidCompat.notification(context, "signage_start", "Inicio Digital Signage",
-                "Digital Signage listo", "Pulsa para abrir el reproductor"))
-        } catch (_: Exception) {}
+/** Overlay starts directly as a background service; signage requests the player activity. */
+class BootReceiver:BroadcastReceiver(){
+    override fun onReceive(context:Context,intent:Intent?){
+        if(intent?.action !in listOf(Intent.ACTION_BOOT_COMPLETED,Intent.ACTION_MY_PACKAGE_REPLACED))return
+        val pending=goAsync();val app=context.applicationContext
+        Thread{
+            val logs=DeviceLogs(app)
+            try{
+                val settings=SettingsStore(app);settings.prepareProductionStartup()
+                if(!settings.autoStart || settings.diagnosticMode || SecureToken(app).load()==null)return@Thread
+                val model=CacheManager(app,settings).active()?.let{ManifestModel(it)}
+                val mode=StartupPolicy.mode(settings,model)
+                val error=ModeReadiness.error(settings.publicSnapshot(),model,mode)
+                if(error!=null){notify(app,"Inicio pendiente",error);logs.record("warn","boot_blocked",error);return@Thread}
+                if(StartupPolicy.background(mode)){
+                    if(!AndroidCompat.canOverlay(app)){
+                        notify(app,"Overlay bloqueado","Abre Ajustes para autorizar la superposición")
+                        logs.record("warn","boot_blocked","Falta permiso Overlay");return@Thread
+                    }
+                    AndroidCompat.startServiceCompat(app,Intent(app,OverlayService::class.java))
+                    logs.record("info","boot_overlay","Servicio Overlay iniciado sin abrir el reproductor")
+                }else{
+                    app.startActivity(Intent(app,MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                    logs.record("info","boot_player","Inicio automático solicitado","mode=$mode")
+                }
+            }catch(e:Exception){
+                logs.record("error","boot_blocked",e.javaClass.simpleName,e.message?:"")
+                notify(app,"Inicio automático bloqueado","El sistema impidió iniciar Digital Signage. Consulta Diagnóstico")
+            }finally{pending.finish()}
+        }.start()
     }
+    private fun notify(c:Context,title:String,message:String){try{
+        (c.getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager).notify(92,
+            AndroidCompat.notification(c,"signage_start","Inicio Digital Signage",title,message))
+    }catch(_:Exception){}}
 }

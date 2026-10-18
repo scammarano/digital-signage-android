@@ -1,10 +1,11 @@
 name: Fire Sports direct LAN APK
 on:
   push:
-    branches: ['feat/sports-direct-lan', 'feat/config-ack-debug-v0411', 'feat/player-playlists-remote-v0412']
+    branches: ['feat/sports-direct-lan', 'feat/config-ack-debug-v0411', 'feat/player-playlists-remote-v0412', 'feat/four-modes-parity-v0413']
   workflow_dispatch:
 permissions:
   contents: read
+  actions: read
 jobs:
   build-test:
     runs-on: ubuntu-latest
@@ -26,6 +27,8 @@ jobs:
         with:
           path: ~/.android/debug.keystore
           key: digital-signage-sports-debug-v1
+      - name: Candidate signing policy
+        run: echo 'CI produces a test-signed candidate. Customer delivery requires the permanent private key and certificate verification.'
       - run: python3 scripts/create_icon.py
       - name: Assert DEBUG HUD and runtime ACK are wired
         run: |
@@ -45,15 +48,16 @@ jobs:
           grep -q "sdkVersion:'19'" /tmp/fire-apk-metadata.txt
       - name: Package Fire APK
         run: |
-          mkdir delivery
-          cp app/build/outputs/apk/debug/app-debug.apk delivery/2Cam-Digital-Signage-v0.4.12-debug-playlists.apk
+          mkdir -p delivery/tools
+          cp "$ANDROID_HOME/build-tools/35.0.0/lib/apksigner.jar" delivery/tools/apksigner.jar
+          cp app/build/outputs/apk/debug/app-debug.apk delivery/2Cam-Digital-Signage-v0.4.17-debug-startup.apk
           cp docs/GUIA_TRANSICIONES_PLAYLISTS_v0412.md delivery/GUIA_TRANSICIONES.md
           cp DEBUG_ACK_LEEME.md delivery/DIAGNOSTICO.md
           cd delivery
           sha256sum *.apk > SHA256SUMS.txt
       - uses: actions/upload-artifact@v4
         with:
-          name: 2cam-fire-0.4.12-debug-playlists-APK
+          name: 2cam-fire-0.4.17-UNSIGNED-CANDIDATE
           path: delivery/
           retention-days: 30
       - name: Enable KVM
@@ -82,3 +86,4 @@ jobs:
             /tmp/fire-sports-test.txt
             /tmp/fire-apk-metadata.txt
           if-no-files-found: ignore
+
