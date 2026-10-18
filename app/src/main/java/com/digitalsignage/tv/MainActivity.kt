@@ -25,6 +25,7 @@ import java.util.concurrent.Executors
 class MainActivity : Activity() {
     private val ui=Handler(Looper.getMainLooper())
     private val worker=Executors.newSingleThreadExecutor()
+    private val applicationWorker=Executors.newSingleThreadExecutor()
     private lateinit var settings:SettingsStore
     private lateinit var token:SecureToken
     private lateinit var cache:CacheManager
@@ -97,7 +98,7 @@ class MainActivity : Activity() {
         if(binding!=applicationBinding){applicationBinding=binding;applicationCatalog=null;lastApplicationPoll=0L;applicationState="Configuración central: pendiente"}
         val now=System.currentTimeMillis();if(applicationPollBusy||now-lastApplicationPoll<15000L)return
         applicationPollBusy=true;lastApplicationPoll=now
-        worker.execute{
+        applicationWorker.execute{
             val store=ApplicationCatalog(this,portal,secret,app)
             var value=store.cached();var state="Configuración central: consulta fallida";var failure:Exception?=null
             val local=value
@@ -185,7 +186,7 @@ class MainActivity : Activity() {
             ui.postDelayed(tick,1000)
         }
     }
-    override fun onDestroy(){ui.removeCallbacks(tick);debugHud.clear();deck?.clear();worker.shutdownNow();super.onDestroy()}
+    override fun onDestroy(){ui.removeCallbacks(tick);debugHud.clear();deck?.clear();applicationWorker.shutdownNow();worker.shutdownNow();super.onDestroy()}
     override fun onResume(){super.onResume();refreshDebugHud();if(::settings.isInitialized && !recoveryMode && !settings.diagnosticMode && !startingSplash && token.load()!=null){lastSync=0L;sync();}}
 
     private var shortcutKey=0
