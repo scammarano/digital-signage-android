@@ -21,15 +21,19 @@ object ApkInstaller {
     }
     fun legacyFile(context:Context,verified:File):File {
         check(Build.VERSION.SDK_INT<24){"La ruta antigua solo corresponde a Android anterior a 7"}
-        val root=context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS)
-            ?:throw IllegalStateException("No hay almacenamiento disponible para entregar la APK al instalador de Fire OS")
+        // Some API19–23 TVs/emulators have no mounted shared storage. Only this verified APK
+        // becomes readable; other private files retain their original permissions.
+        val external=context.getExternalFilesDir(Environment.DIRECTORY_DOWNLOADS)
+        val root=external?:context.filesDir
         val dir=File(root,"apk-install").apply{check(mkdirs()||isDirectory)}
+        if(external==null){check(root.setExecutable(true,false));check(dir.setExecutable(true,false))}
         val target=File(dir,"DigitalSignage-update.apk");val part=File(dir,"pending.part")
         try{
             verified.inputStream().use{input->FileOutputStream(part).use{output->input.copyTo(output);output.fd.sync()}}
             check(part.length()==verified.length()&&digest(part).contentEquals(digest(verified))){"Copia de instalación incompleta"}
             if(target.exists())check(target.delete())
             check(part.renameTo(target)){"No se pudo preparar el archivo para Fire OS"}
+            if(external==null)check(target.setReadable(true,false)){"No se pudo compartir la APK con el instalador antiguo"}
             check(target.canRead()){ "El instalador no puede leer la APK preparada" }
             return target
         }finally{part.delete()}

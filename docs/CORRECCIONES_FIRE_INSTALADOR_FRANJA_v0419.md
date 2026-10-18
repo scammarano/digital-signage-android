@@ -6,7 +6,7 @@ Base: `feat/four-modes-parity-v0413`, commit `19924b6d570395764c52921035bee5df86
 
 La foto muestra `No Activity found` al enviar `ACTION_VIEW` con un URI `content://` al instalador del Fire. Se produce después de verificar la APK; no es el error de certificado distinto.
 
-0.4.19 usa una copia comprobada con SHA-256 en la carpeta externa de la propia aplicación y un URI `file://` para Android/API19–23. API24+ conserva el proveedor privado y permiso temporal de lectura. Se intenta `ACTION_INSTALL_PACKAGE` y, si no hay actividad para esa acción, `ACTION_VIEW`. La apertura se registra como solicitud al instalador, nunca como actualización ya instalada. No se aceptan archivos de otro paquete, versión o certificado.
+0.4.19 usa una copia comprobada con SHA-256 y un URI `file://` para Android/API19–23. Prefiere la carpeta externa de la propia aplicación; si no hay almacenamiento compartido montado, prepara una carpeta de instalación interna y permite la lectura de esa única APK verificada, sin cambiar la lectura de otros archivos privados. API24+ conserva el proveedor privado y permiso temporal de lectura. Se intenta `ACTION_INSTALL_PACKAGE` y, si no hay actividad para esa acción, `ACTION_VIEW`. La apertura se registra como solicitud al instalador, nunca como actualización ya instalada. No se aceptan archivos de otro paquete, versión o certificado.
 
 Referencia Android/AOSP: https://android.googlesource.com/platform/development/+/master/samples/ApiDemos/src/com/example/android/apis/content/InstallApk.java (ejemplo `getApkUri`, API anterior a N frente a FileProvider).
 
