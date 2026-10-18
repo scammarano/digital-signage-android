@@ -33,6 +33,7 @@ class SportsInstrumentation:Instrumentation(){
         val old=formatSettings.publicSnapshot().put("overlay_width_pct",77).put("queue_height_pct",66)
         check(!formatSettings.validateSettings(old).has("overlay_width_pct"))
         var rejected=false;try{MediaFormats.validate(JSONObject().put("revision",1).put("side_width_pct",101).put("bottom_height_pct",20))}catch(_:IllegalArgumentException){rejected=true};check(rejected)
+        exerciseMediaTiming()
         exercisePin()
         exerciseOverlay()
         val settings=SettingsStore(targetContext)
@@ -73,6 +74,29 @@ class SportsInstrumentation:Instrumentation(){
         host.revoke(pair.getString("controlId"));check(host.controls().length()==2)
         runOnMainSync{activity.finish()}
     }
+    private fun exerciseMediaTiming(){
+        check(MediaTiming.durationMs(JSONObject().put("duration",0.1))==100L)
+        check(MediaTiming.durationMs(JSONObject().put("duration",1.5))==1500L)
+        check(MediaTiming.durationMs(JSONObject().put("duration",0))==100L)
+        check(MediaTiming.durationMs(JSONObject())==10000L)
+        val bitmap=android.graphics.Bitmap.createBitmap(8,8,android.graphics.Bitmap.Config.ARGB_8888)
+        bitmap.eraseColor(android.graphics.Color.WHITE)
+        val bytes=java.io.ByteArrayOutputStream().also{bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG,100,it)}.toByteArray();bitmap.recycle()
+        val sha=java.security.MessageDigest.getInstance("SHA-256").digest(bytes).joinToString(""){"%02x".format(it.toInt() and 255)}
+        val cache=CacheManager(targetContext,SettingsStore(targetContext));val file=cache.mediaFile(sha);file.writeBytes(bytes)
+        val complete=java.util.concurrent.CountDownLatch(1);var elapsed=0L;var shown=0L;var failure:String?=null;var deck:MediaDeck?=null
+        runOnMainSync{
+            deck=MediaDeck(android.widget.FrameLayout(targetContext),cache,false)
+            deck!!.display(JSONObject().put("sha256",sha).put("mime","image/png").put("duration",0.1).put("transition","cut"),
+                {elapsed=android.os.SystemClock.elapsedRealtime()-shown;complete.countDown()},
+                {failure=it;complete.countDown()},
+                {shown=android.os.SystemClock.elapsedRealtime()})
+        }
+        check(complete.await(4,java.util.concurrent.TimeUnit.SECONDS)){"Short image did not complete"}
+        runOnMainSync{deck?.clear()};file.delete()
+        check(failure==null && elapsed in 70L..900L){"Fractional image timing: $elapsed ms; $failure"}
+        println("FRACTIONAL_MEDIA_PASS actual_image_ms=$elapsed")
+    }
     private fun exercisePin(){
         val settings=SettingsStore(targetContext)
         val prefs=targetContext.getSharedPreferences("signage_settings_v1",0)
@@ -108,7 +132,7 @@ class SportsInstrumentation:Instrumentation(){
             check(ModeReadiness.error(config,null,2)!=null)
             val empty=ManifestModel(JSONObject().put("orientation","landscape"))
             check(ModeReadiness.error(config,empty,2)!=null){"Missing playlist accepted"}
-            val item=JSONObject().put("mime","image/png").put("layout","bottom").put("sha256",sha).put("size",bytes.size).put("duration",3)
+            val item=JSONObject().put("mime","image/png").put("layout","bottom").put("sha256",sha).put("size",bytes.size).put("duration",0.1)
             val list=JSONObject().put("id",91).put("layout","bottom").put("orientation","landscape").put("item_count",1).put("image_count",1)
                 .put("items",org.json.JSONArray().put(item))
             val manifest=JSONObject().put("schema_version",3).put("orientation","landscape").put("playlist_catalog",JSONObject().put("91",list))
@@ -130,6 +154,10 @@ class SportsInstrumentation:Instrumentation(){
             runOnMainSync{AndroidCompat.startServiceCompat(targetContext,Intent(targetContext,OverlayService::class.java).setAction(OverlayService.ACTION_PREVIEW))}
             for(i in 0 until 60){if(OverlayService.lastShownAt>before)break;Thread.sleep(100)}
             check(OverlayService.lastShownAt>before){"Overlay window was not attached"}
+            for(i in 0 until 20){if(OverlayService.lastHiddenAt>=OverlayService.lastShownAt)break;Thread.sleep(50)}
+            val visibleMs=OverlayService.lastHiddenAt-OverlayService.lastShownAt
+            check(visibleMs in 40L..900L){"Fractional Overlay did not hide: $visibleMs ms"}
+            println("FRACTIONAL_OVERLAY_PASS actual_window_ms=$visibleMs")
             check(settings.primaryMode==1 && settings.manualMode==0){"Preview changed saved mode"}
             println("OVERLAY_WINDOW_PASS BOOT_BACKGROUND_POLICY_PASS MODE_PLAYLIST_GATE_PASS")
         }finally{

@@ -28,11 +28,13 @@ class OverlayService:Service(){
     companion object {
         const val ACTION_PREVIEW="com.digitalsignage.tv.PREVIEW_OVERLAY"
         @Volatile var lastShownAt=0L;private set
+        @Volatile var lastHiddenAt=0L;private set
     }
     private val handler=Handler(Looper.getMainLooper());private val worker=Executors.newSingleThreadExecutor()
     private lateinit var settings:SettingsStore;private lateinit var cache:CacheManager
     private var wm:WindowManager?=null;private var current:View?=null;private var nextAdAt=0L;private var hideAt=0L
     private var previewUntil=0L
+    private var dismiss:Runnable?=null
     private var lastFetch=0L;private var index=0;private var syncing=false
     private var lastDebugConfigPoll=0L
     private var debugText:TextView?=null
@@ -128,10 +130,10 @@ class OverlayService:Service(){
         for(i in 0 until all.length()){val item=all.optJSONObject(i)?:continue;if(item.optString("mime").startsWith("image/"))images.add(item)}
         if(images.isEmpty()){nextAdAt=now+interval;return}
         val item=images[index%images.size];index++
-        val duration=settings.overlayDurationSec.toLong()*1000L
-        show(item);hideAt=now+duration;nextAdAt=now+interval
+        val duration=minOf(settings.overlayDurationSec.toLong()*1000L,MediaTiming.durationMs(item))
+        show(item,duration);hideAt=now+duration;nextAdAt=now+interval
     }
-    private fun show(item:JSONObject){
+    private fun show(item:JSONObject,duration:Long){
         val file=cache.mediaFile(item.optString("sha256"));if(!file.isFile)return
         try {
             val opts=BitmapFactory.Options().apply{inJustDecodeBounds=true};BitmapFactory.decodeFile(file.path,opts)
@@ -164,8 +166,9 @@ class OverlayService:Service(){
             frame.translationX=offset.first;frame.translationY=offset.second
             manager.addView(frame,attrs);current=frame
             frame.post{if(current===frame && frame.windowToken!=null)lastShownAt=System.currentTimeMillis()}
-            frame.animate().translationX(0f).translationY(0f).alpha(1f).setDuration(600)
+            frame.animate().translationX(0f).translationY(0f).alpha(1f).setDuration(minOf(600L,duration/2))
                 .setInterpolator(android.view.animation.DecelerateInterpolator()).start()
+            dismiss=Runnable{if(current===frame)hide(duration>=1000L)}.also{handler.postDelayed(it,duration)}
             if(DeviceDebug.effective(this)!=settings.remoteRevision ||
                DeviceDebug.effectiveMode(this)!=2){
                 DeviceDebug.record(this,DeviceLogs(this),"effective",settings.remoteRevision,
@@ -177,7 +180,9 @@ class OverlayService:Service(){
         }
     }
     private fun hide(animated:Boolean=false){
+        dismiss?.let{handler.removeCallbacks(it)};dismiss=null
         val view=current?:return;current=null
+        lastHiddenAt=System.currentTimeMillis()
         val manager=wm?:return
         fun remove(){try{manager.removeView(view)}catch(_:Exception){}}
         if(!animated){view.animate().cancel();remove();return}

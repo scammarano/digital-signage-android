@@ -68,7 +68,7 @@ class MediaDeck(private val stage:FrameLayout,private val cache:CacheManager,pri
                         val image=ImageView(stage.context).apply{scaleType=ImageView.ScaleType.FIT_CENTER;setImageBitmap(bitmap)}
                         box.addView(image,FrameLayout.LayoutParams(-1,-1));switchTo(box,parms,item,null);onShown()
                         pendingTimer=Runnable{if(stamp==serial)onComplete()}
-                        main.postDelayed(pendingTimer!!,item.optLong("duration",10).coerceIn(1,3600)*1000)
+                        main.postDelayed(pendingTimer!!,MediaTiming.durationMs(item))
                     }
                 }catch(e:Exception){main.post{if(stamp==serial)onError(e.message?:"Imagen no compatible")}}
             }
@@ -78,7 +78,7 @@ class MediaDeck(private val stage:FrameLayout,private val cache:CacheManager,pri
     /** Crossfade time and image zoom movement are independently configurable. */
     private fun switchTo(box:FrameLayout,params:FrameLayout.LayoutParams,item:JSONObject,video:VideoView?){
         val effect=item.optString("transition","fade")
-        val slideMs=item.optLong("duration",10).coerceIn(1L,3600L)*1000L
+        val slideMs=MediaTiming.durationMs(item)
         val crossfade=item.optLong("transition_ms",600L).coerceIn(0L,5000L)
             .coerceAtMost(slideMs/2)
         val prev=current

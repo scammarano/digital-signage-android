@@ -50,14 +50,14 @@ jobs:
         run: |
           mkdir -p delivery/tools
           cp "$ANDROID_HOME/build-tools/35.0.0/lib/apksigner.jar" delivery/tools/apksigner.jar
-          cp app/build/outputs/apk/debug/app-debug.apk delivery/2Cam-Digital-Signage-v0.4.16-debug-startup.apk
+          cp app/build/outputs/apk/debug/app-debug.apk delivery/2Cam-Digital-Signage-v0.4.17-debug-startup.apk
           cp docs/GUIA_TRANSICIONES_PLAYLISTS_v0412.md delivery/GUIA_TRANSICIONES.md
           cp DEBUG_ACK_LEEME.md delivery/DIAGNOSTICO.md
           cd delivery
           sha256sum *.apk > SHA256SUMS.txt
       - uses: actions/upload-artifact@v4
         with:
-          name: 2cam-fire-0.4.16-UNSIGNED-CANDIDATE
+          name: 2cam-fire-0.4.17-UNSIGNED-CANDIDATE
           path: delivery/
           retention-days: 30
       - name: Enable KVM
