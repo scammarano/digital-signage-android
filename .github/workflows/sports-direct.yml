@@ -105,6 +105,12 @@ jobs:
             adb install -r app/build/outputs/apk/debug/app-debug.apk
             adb install -r app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
             adb shell svc wifi enable
+            # A default emulator can expose only a cellular IPv4 on radio0. Give its
+            # real wlan0 a private test address; do not permit cellular in production.
+            adb root
+            adb wait-for-device
+            adb shell ip link set wlan0 up
+            adb shell ip addr replace 172.18.22.2/24 dev wlan0
             adb shell ip -4 address
             adb shell settings put global install_non_market_apps 1
             adb shell settings put secure install_non_market_apps 1
