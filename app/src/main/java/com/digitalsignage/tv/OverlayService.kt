@@ -101,7 +101,6 @@ class OverlayService:Service(){
         startForeground(91, AndroidCompat.notification(this, "signage_overlay", "Digital Signage Overlay",
             "Digital Signage activo", "Publicidad programada en segundo plano"))
         wm=getSystemService(Context.WINDOW_SERVICE) as WindowManager
-        handler.post(ticker)
     }
     override fun onBind(intent:Intent?):IBinder?=null
     override fun onStartCommand(intent:Intent?,flags:Int,startId:Int):Int {
@@ -110,6 +109,9 @@ class OverlayService:Service(){
             nextAdAt=System.currentTimeMillis()
             previewUntil=nextAdAt+settings.overlayDurationSec*1000L+2000L
         }
+        // Start only after the start intent has established preview policy. A ticker
+        // queued in onCreate can otherwise stop a new preview in a non-Overlay mode.
+        handler.removeCallbacks(ticker);handler.post(ticker)
         return START_STICKY
     }
     override fun onDestroy(){handler.removeCallbacks(ticker);hide();
