@@ -105,12 +105,12 @@ jobs:
             adb install -r app/build/outputs/apk/debug/app-debug.apk
             adb install -r app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
             adb shell svc wifi enable
-            # Android29's emulator can expose only cellular IPv4 and reset wlan0.
-            # Create a private virtual Ethernet interface for the LAN integration test.
-            # This exists only in CI; production still requires real Wi-Fi/Ethernet.
+            # Android29's default image has one virtual radio0 adapter and no dummy
+            # driver. Repurpose that adapter as an isolated static Ethernet test LAN.
+            # No external traffic is needed by the emulator; production is unchanged.
             adb root
             adb wait-for-device
-            if [ "${{ matrix.api }}" -ge 29 ]; then adb shell ip link add eth-ci type dummy; adb shell ip addr add 172.18.22.2/24 dev eth-ci; adb shell ip link set eth-ci up; fi
+            if [ "${{ matrix.api }}" -ge 29 ]; then adb shell svc data disable; adb shell ip link set radio0 down; adb shell ip link set radio0 name eth-ci; adb shell ip addr add 172.18.22.2/24 dev eth-ci; adb shell ip link set eth-ci up; fi
             adb shell ip -4 address
             adb shell settings put global install_non_market_apps 1
             adb shell settings put secure install_non_market_apps 1
