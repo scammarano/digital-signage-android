@@ -20,6 +20,7 @@ class SportsActivity:Activity(){
     private var deck:MediaDeck?=null
     private var playing=false
     private val refresh=object:Runnable{override fun run(){try{
+        SportsRuntime.start(this@SportsActivity)
         val host=SportsRuntime.host(this@SportsActivity);val snap=host.displaySnapshot()
         board.update(snap,SportsRuntime.board(this@SportsActivity))
         info.text="${SportsRuntime.address.ifEmpty{SportsRuntime.error}} · ${host.controls().length()}/3 controles"+
