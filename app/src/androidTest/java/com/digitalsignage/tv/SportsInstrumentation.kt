@@ -97,6 +97,13 @@ class SportsInstrumentation:Instrumentation(){
         runOnMainSync{activity.finish()}
     }
     private fun exerciseApplicationCatalog(){
+        for(app in listOf("turnos","sports")){
+            val actual=JSONObject(context.assets.open("portal-catalog-$app.json").bufferedReader().use{it.readText()})
+            val parsed=ApplicationCatalog.validate(actual,app)
+            check(parsed.getLong("revision")==9L)
+            check(!parsed.toString().contains("privad"))
+            check(ApplicationCatalog.scopeLabel(parsed).contains(if(app=="turnos")"Sala central" else "Pista central"))
+        }
         val app="turnos";val base="https://portal.invalid/public/";val secret="catalog-ci-"+System.nanoTime()
         fun entity(id:Int,kind:String,parent:Int?=null)=JSONObject().put("id",id).put("kind",kind).put("name","$kind $id")
             .put("parent_id",parent?:JSONObject.NULL).put("enabled",true).put("config",JSONObject()).put("device_id",if(kind=="screen")91 else JSONObject.NULL)
@@ -129,7 +136,7 @@ class SportsInstrumentation:Instrumentation(){
             rejects{ApplicationCatalog.validate(sports.apply{getJSONArray("entities").getJSONObject(3).put("parent_id",99)},"sports")}
             cache.accept(snapshot(revision=3));check(cache.cached()!!.getInt("revision")==3)
             cache.revoke();check(cache.cached()==null)
-            verificationDetails.append("APPLICATION_CATALOG_PASS schema scope revision isolation persistence revocation\n")
+            verificationDetails.append("APPLICATION_CATALOG_PASS real_PHP29_JSON schema scope revision isolation persistence revocation\n")
         }finally{cache.revoke()}
     }
     private fun exerciseInstaller(){

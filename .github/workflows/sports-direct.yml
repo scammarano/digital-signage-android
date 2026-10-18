@@ -10,12 +10,36 @@ jobs:
   build-test:
     runs-on: ubuntu-latest
     timeout-minutes: 25
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: testpass
+          MYSQL_DATABASE: signage_catalog_test
+        ports: ['3306:3306']
+        options: >-
+          --health-cmd="mysqladmin ping -ptestpass"
+          --health-interval=5s --health-timeout=5s --health-retries=20
     strategy:
       fail-fast: false
       matrix:
         api: [22, 29]
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: scammarano/2camdigitaltvweb
+          ref: ae6cc0c09c0dda01259450a4c78c810a074e0e6c
+          path: portal-fixture
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.1'
+          extensions: pdo_mysql, zip, openssl
+      - name: Generate real PHP29 scoped catalogs for Android contract verification
+        run: |
+          php -r 'file_put_contents("portal-fixture/config/config.php", "<?php return ".var_export(["app_url"=>"https://catalog.invalid","db_host"=>"127.0.0.1","db_name"=>"signage_catalog_test","db_user"=>"root","db_pass"=>"testpass"],true).";");'
+          php portal-fixture/tests/config_tenant_test.php
+          php scripts/create_portal_catalog_fixtures.php
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
