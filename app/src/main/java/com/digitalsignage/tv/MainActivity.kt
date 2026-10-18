@@ -99,7 +99,14 @@ class MainActivity : Activity() {
         applicationPollBusy=true;lastApplicationPoll=now
         worker.execute{
             val store=ApplicationCatalog(this,portal,secret,app)
-            var value=store.cached();var state="Configuración central: sin conexión";var failure:Exception?=null
+            var value=store.cached();var state="Configuración central: consulta fallida";var failure:Exception?=null
+            val local=value
+            if(local!=null)ui.post{
+                if(!isFinishing&&!isDestroyed&&token.load()==secret&&settings.portalUrl==portal&&applicationBinding==binding){
+                    applicationCatalog=local;applicationState="${app.uppercase()} r${local.getLong("revision")} · copia local, comprobando portal"
+                    if(activeMode==if(app=="turnos")3 else 4)drawLiveBoard()
+                }
+            }
             try{
                 val received=SignageApi(portal,secret).applicationConfig(app)
                 val old=value?.getLong("revision")
@@ -117,7 +124,7 @@ class MainActivity : Activity() {
             val result=value;val status=state
             ui.post{
                 applicationPollBusy=false
-                if(token.load()!=secret||settings.portalUrl!=portal||applicationBinding!=binding)return@post
+                if(isFinishing||isDestroyed||token.load()!=secret||settings.portalUrl!=portal||applicationBinding!=binding)return@post
                 applicationCatalog=result;applicationState=status
                 failure?.let{logs.record("warn","application_config_unavailable",app,it.javaClass.simpleName)}
                 if(activeMode==if(app=="turnos")3 else 4)drawLiveBoard()
