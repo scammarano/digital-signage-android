@@ -148,7 +148,7 @@ class OverlayService:Service(){
         if(images.isEmpty()){nextAdAt=now+interval;return}
         val item=images[index%images.size];index++
         val duration=minOf(settings.overlayDurationSec.toLong()*1000L,MediaTiming.durationMs(item))
-        show(item,duration);hideAt=now+duration;nextAdAt=now+interval
+        show(item,duration);nextAdAt=now+interval
     }
     private fun show(item:JSONObject,duration:Long){
         val file=cache.mediaFile(item.optString("sha256"));if(!file.isFile)return
@@ -182,10 +182,14 @@ class OverlayService:Service(){
             val offset=OverlayMotion.offset(layout,w,h)
             frame.translationX=offset.first;frame.translationY=offset.second
             manager.addView(frame,attrs);current=frame;visible=true
-            frame.post{if(current===frame && frame.windowToken!=null)lastShownAt=System.currentTimeMillis()}
-            frame.animate().translationX(0f).translationY(0f).alpha(1f).setDuration(minOf(600L,duration/2))
-                .setInterpolator(android.view.animation.DecelerateInterpolator()).start()
-            dismiss=Runnable{if(current===frame)hide(duration>=1000L)}.also{handler.postDelayed(it,duration)}
+            hideAt=System.currentTimeMillis()+5000L // Attachment watchdog, not media exposure.
+            frame.post{
+                if(current!==frame || frame.windowToken==null)return@post
+                lastShownAt=System.currentTimeMillis();hideAt=lastShownAt+duration
+                frame.animate().translationX(0f).translationY(0f).alpha(1f).setDuration(minOf(600L,duration/2))
+                    .setInterpolator(android.view.animation.DecelerateInterpolator()).start()
+                dismiss=Runnable{if(current===frame)hide(duration>=1000L)}.also{handler.postDelayed(it,duration)}
+            }
             if(DeviceDebug.effective(this)!=settings.remoteRevision ||
                DeviceDebug.effectiveMode(this)!=2){
                 DeviceDebug.record(this,DeviceLogs(this),"effective",settings.remoteRevision,

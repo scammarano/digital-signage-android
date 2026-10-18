@@ -18,6 +18,8 @@ La versión antigua que ya está ejecutándose mantiene su código de apertura d
 
 Se reserva la región una sola vez a partir del lienzo realmente medido: inferior 20% del alto central configurado; lateral usa el porcentaje central de ancho; medias pantallas 50%. `MediaDeck` recibe esa región ya dimensionada. Se conserva la proporción de los archivos; no se estira ni se recorta un arte incompatible.
 
+El temporizador de Overlay empieza cuando la ventana está adjunta, no antes. En Android moderno, el primer permiso/alta de ventana podía consumir casi toda una aparición de 0,1 s antes de mostrarla.
+
 Sports directo usa exclusivamente la lista asignada a Marcador deportivo y a su formato; deja de heredar la programación de Cartelera. Los puntos, juegos y sets se muestran en columnas amplias, con tamaño ajustado a la región disponible. La vista de administración Sports sigue teniendo sus controles de encuentro/enlace; la integración del nuevo catálogo central del portal continúa pendiente y no se declara terminada aquí.
 
 ## Validación
