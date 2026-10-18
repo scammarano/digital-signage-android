@@ -121,7 +121,10 @@ class LocalAdminServer(private val context:Context,private val settings:Settings
                   }+"</select></label>"
             }
             val opts=StringBuilder()
-            fun section(title:String){opts.append("<h3>${html(title)}</h3>")}
+            val groups=settings.schema.getJSONArray("groups");val groupNames=(0 until groups.length()).map{groups.getString(it)}
+            opts.append("<nav role=tablist>"+groupNames.mapIndexed{i,g->"<button type=button role=tab data-tab-target='$i' aria-selected='${i==0}'>${html(g)}</button>"}.joinToString("")+"</nav>")
+            var sectionOpen=false
+            fun section(title:String){if(sectionOpen)opts.append("</section>");sectionOpen=true;val index=groupNames.indexOf(title);opts.append("<section data-tab-panel='$index' ${if(index==0)"" else "hidden"}><h3>${html(title)}</h3>")}
             fun check(key:String,label:String){
                 opts.append("<label><input type=checkbox name='$key' value='1' ${if(snap.optBoolean(key))"checked" else ""}>${html(label)}</label>")
             }
@@ -129,7 +132,7 @@ class LocalAdminServer(private val context:Context,private val settings:Settings
                 opts.append("<label>${html(label)}<input type=number name='$key' min='$min' max='$max' value='${snap.optInt(key)}' required></label>")
             }
             var group=""
-            for(def in settings.schemaFields()){
+            for(def in groupNames.flatMap{g->settings.schemaFields().filter{it.getString("group")==g}}){
                 val k=def.getString("key");val label=def.getString("label");val g=def.getString("group")
                 if(g!=group){section(g);group=g}
                 when(def.getString("type")){
@@ -137,11 +140,13 @@ class LocalAdminServer(private val context:Context,private val settings:Settings
                     "mask"->{for((bit,title) in listOf(1 to "Cartelera",2 to "Overlay",4 to "Turnos",8 to "Marcador deportivo")){
                         opts.append("<label><input type=checkbox name='mode_$bit' value='1' ${if(snap.getInt(k) and bit!=0)"checked" else ""}>${html(title)}</label>")
                     }}
-                    "playlist"->opts.append(select(k,label,snap.get(k).toString(),settings.playlistChoices(def).map{it.first.toString() to it.second}))
+                    "playlist"->{opts.append(select(k,label,snap.get(k).toString(),settings.playlistChoices(def).map{it.first.toString() to it.second}));opts.append("<button name=key value='$k' formaction='/preview' formnovalidate>▶ Probar en TV</button>")}
                     "enum"->{val o=def.getJSONObject("options");val choices=o.keys().asSequence().map{it to o.getString(it)}.toList();opts.append(select(k,label,snap.get(k).toString(),choices))}
                     else->num(k,label,def.getInt("min"),def.getInt("max"))
                 }
             }
+            if(sectionOpen)opts.append("</section>")
+            opts.append("<p>Overlay reproduce la playlist completa por orden durante la ventana visible y después espera la pausa configurada. Cada imagen conserva su duración y transición.</p><p>${html(DeviceNetwork.label())} · ${html(address)}</p>")
             val content="<h2>2Cam Digital Signage · Panel local</h2><p>Configuración unificada por modo. Solo LAN; cierra en 30 minutos.</p><p>Formatos centrales: lateral ${settings.mediaFormatPercent("side")}% del ancho · inferior ${settings.mediaFormatPercent("bottom")}% del alto. Se administran en Medios.</p><form method=post action='/save'><input type=hidden name=csrf value='$csrf'>$opts<button>Guardar configuración local</button></form><h3>Respaldo</h3><a href='/backup'>Descargar JSON (sin credenciales)</a><form method=post action='/restore'><input type=hidden name=csrf value='$csrf'><textarea name=json rows=7 placeholder='Pega el contenido JSON del respaldo'></textarea><button>Restaurar JSON</button></form><form method=post action='/stop'><input type=hidden name=csrf value='$csrf'><button>Cerrar panel local</button></form>"
             respond(c,200,page(content),"", "text/html; charset=utf-8");return
         }
@@ -152,6 +157,16 @@ class LocalAdminServer(private val context:Context,private val settings:Settings
         if(method=="POST"){
             if(params["csrf"]!=sha(sessionHash+"ds-lan-csrf")){respond(c,403,"Solicitud no autorizada");return}
             if(path=="/stop"){respond(c,200,page("<p>Panel local cerrado.</p>"),"","text/html; charset=utf-8");close();return}
+            if(path=="/preview"){
+                val key=params["key"]?:"";require(settings.schemaFields().any{it.getString("key")==key&&it.getString("type")=="playlist"})
+                val id=params[key]?.toIntOrNull()?:0;require(id>=0)
+                require(!ServiceGate(context).suspended){"Servicio suspendido"}
+                android.os.Handler(android.os.Looper.getMainLooper()).post{
+                    try{context.startActivity(android.content.Intent(context,PlaylistPreviewActivity::class.java).addFlags(android.content.Intent.FLAG_ACTIVITY_NEW_TASK).putExtra("key",key).putExtra("id",id))}
+                    catch(e:Exception){DeviceLogs(context).record("warn","preview_blocked",e.javaClass.simpleName)}
+                }
+                respond(c,200,page("<p>Prueba solicitada en el TV. Fire OS puede limitar abrir pantallas desde segundo plano. No se modificó la configuración.</p><a href='/'>Volver</a>"),"","text/html; charset=utf-8");return
+            }
             if(path=="/save"){
                 val o=JSONObject()
                 for(def in settings.schemaFields()){
@@ -179,12 +194,14 @@ class LocalAdminServer(private val context:Context,private val settings:Settings
         respond(c,404,"Ruta no encontrada")
       }catch(e:Exception){try{respond(c,400,"Solicitud inválida: ${e.message?.take(250)?:e.javaClass.simpleName}")}catch(_:Exception){} }
     }}
-    private fun page(content:String)="""<!doctype html><html lang='es'><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'><title>2Cam Digital Signage · Local</title><style>body{font:16px system-ui;background:#ecf1f7;color:#14243b;margin:0;padding:30px}main{max-width:740px;margin:auto;background:white;padding:24px;border-radius:12px;box-shadow:0 8px 30px #0002}label{display:block;margin:12px 0}input,textarea{padding:10px;border:1px solid #cbd5e1;border-radius:6px;max-width:100%;box-sizing:border-box}textarea{width:100%}input[type=checkbox]{accent-color:#07833c}select{max-width:100%;box-sizing:border-box;padding:10px;border:1px solid #cbd5e1;border-radius:6px}button{background:#174589;color:white;border:0;padding:10px 18px;border-radius:6px;cursor:pointer;margin:12px 0}form{border-bottom:1px solid #ddd;margin-bottom:20px}a{color:#174589}</style></head><body><main>$content</main></body></html>"""
+    private fun page(content:String)="""<!doctype html><html lang='es'><head><meta charset='utf-8'><meta name='viewport' content='width=device-width,initial-scale=1'><title>2Cam Digital Signage · Local</title><style>body{font:16px system-ui;background:#ecf1f7;color:#14243b;margin:0;padding:30px}main{max-width:740px;margin:auto;background:white;padding:24px;border-radius:12px;box-shadow:0 8px 30px #0002}label{display:block;margin:12px 0}input,textarea{padding:10px;border:1px solid #cbd5e1;border-radius:6px;max-width:100%;box-sizing:border-box}textarea{width:100%}input[type=checkbox]{accent-color:#07833c}select{max-width:100%;box-sizing:border-box;padding:10px;border:1px solid #cbd5e1;border-radius:6px}button{background:#174589;color:white;border:0;padding:10px 18px;border-radius:6px;cursor:pointer;margin:12px 0}form{border-bottom:1px solid #ddd;margin-bottom:20px}a{color:#174589}[hidden]{display:none!important}nav{display:flex;overflow:auto;gap:8px}nav button{white-space:nowrap}button[aria-selected=true]{background:#07833c}input,select,button{min-height:48px}:focus{outline:3px solid #07833c}</style></head><body><main data-settings-tabs>$content</main><script>$tabScript</script></body></html>"""
+    private val tabScript="""document.querySelectorAll('[data-settings-tabs]').forEach(function(r){var tabs=Array.from(r.querySelectorAll('[data-tab-target]')),panes=Array.from(r.querySelectorAll('[data-tab-panel]'));function show(t){tabs.forEach(function(b){b.setAttribute('aria-selected',String(b===t));});panes.forEach(function(p){p.hidden=p.dataset.tabPanel!==t.dataset.tabTarget;});}tabs.forEach(function(t,i){t.onclick=function(){show(t);};t.onkeydown=function(e){if(e.key==='ArrowRight'||e.key==='ArrowLeft'){e.preventDefault();var n=tabs[(i+(e.key==='ArrowRight'?1:tabs.length-1))%tabs.length];show(n);n.focus();}};});if(tabs[0])show(tabs[0]);r.addEventListener('invalid',function(e){var p=e.target.closest('[data-tab-panel]');var t=p&&tabs.find(function(t){return t.dataset.tabTarget===p.dataset.tabPanel;});if(t)show(t);},true);});"""
+    private fun scriptHash()=android.util.Base64.encodeToString(MessageDigest.getInstance("SHA-256").digest(tabScript.toByteArray(Charsets.UTF_8)),android.util.Base64.NO_WRAP)
     private fun respond(c:Socket,status:Int,body:String,extra:String="",type:String="text/plain; charset=utf-8") {
         val bytes=body.toByteArray(Charsets.UTF_8)
         val out=BufferedOutputStream(c.getOutputStream())
         val reason=when(status){200->"OK";303->"See Other";400->"Bad Request";401->"Unauthorized";403->"Forbidden";404->"Not Found";405->"Method Not Allowed";413->"Payload Too Large";429->"Too Many Requests";else->"Error"}
-        out.write("HTTP/1.1 $status $reason\r\nContent-Type: $type\r\nContent-Length: ${bytes.size}\r\nConnection: close\r\nCache-Control: no-store\r\nX-Content-Type-Options: nosniff\r\nX-Frame-Options: DENY\r\nReferrer-Policy: no-referrer\r\nContent-Security-Policy: default-src 'none'; style-src 'unsafe-inline'; form-action 'self'; base-uri 'none'\r\n$extra\r\n".toByteArray())
+        out.write("HTTP/1.1 $status $reason\r\nContent-Type: $type\r\nContent-Length: ${bytes.size}\r\nConnection: close\r\nCache-Control: no-store\r\nX-Content-Type-Options: nosniff\r\nX-Frame-Options: DENY\r\nReferrer-Policy: no-referrer\r\nContent-Security-Policy: default-src 'none'; style-src 'unsafe-inline'; script-src 'sha256-${scriptHash()}'; form-action 'self'; base-uri 'none'\r\n$extra\r\n".toByteArray())
         out.write(bytes);out.flush()
     }
 }

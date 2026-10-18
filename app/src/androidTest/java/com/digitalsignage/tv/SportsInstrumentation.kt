@@ -13,7 +13,7 @@ class SportsInstrumentation:Instrumentation(){
     private var pinVerifyMs=-1L
     private val verificationDetails=StringBuilder()
     override fun onCreate(arguments:Bundle?){super.onCreate(arguments);start()}
-    override fun onStart(){val result=Bundle();try{exercise();result.putString("stream","SPORTS_FIRE_DIRECT_PASS\nMEDIA_FORMATS_CENTRAL_PASS\nPIN_MIGRATION_PASS subsequent_verification_ms=$pinVerifyMs\nOVERLAY_WINDOW_PASS BOOT_BACKGROUND_POLICY_PASS MODE_PLAYLIST_GATE_PASS\n$verificationDetails");finish(Activity.RESULT_OK,result)}catch(e:Throwable){result.putString("stream","SPORTS_FIRE_DIRECT_FAIL ${e.javaClass.simpleName}: ${e.message}\n$verificationDetails");finish(Activity.RESULT_CANCELED,result)}}
+    override fun onStart(){val result=Bundle();try{exercise();result.putString("stream","SPORTS_FIRE_DIRECT_PASS\nMEDIA_FORMATS_CENTRAL_PASS\nPIN_MIGRATION_PASS subsequent_verification_ms=$pinVerifyMs\nOVERLAY_WINDOW_PASS BOOT_BACKGROUND_POLICY_PASS MODE_PLAYLIST_GATE_PASS\n$verificationDetails");finish(Activity.RESULT_OK,result)}catch(e:Throwable){result.putString("stream","SPORTS_FIRE_DIRECT_FAIL ${e.javaClass.simpleName}: ${e.message}\n${e.stackTraceToString()}\n$verificationDetails");finish(Activity.RESULT_CANCELED,result)}}
     private fun api(method:String,path:String,token:String?=null,body:JSONObject?=null,key:String?=null):JSONObject {
         // The test is a LAN controller of the raw-socket authority. Do not relax the portal's
         // production HTTPS-only HttpURLConnection policy just to act as a local test client.
@@ -150,8 +150,12 @@ class SportsInstrumentation:Instrumentation(){
         fun nodes(node:android.view.accessibility.AccessibilityNodeInfo?):List<android.view.accessibility.AccessibilityNodeInfo>{
             if(node==null)return emptyList();val out=mutableListOf(node);for(i in 0 until node.childCount)out.addAll(nodes(node.getChild(i)));return out
         }
-        fun write(value:String){val node=nodes(uiAutomation.rootInActiveWindow).first{it.className=="android.widget.EditText"};check(node.performAction(android.view.accessibility.AccessibilityNodeInfo.ACTION_SET_TEXT,Bundle().apply{putCharSequence(android.view.accessibility.AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE,value)}))}
-        fun click(text:String){val node=nodes(uiAutomation.rootInActiveWindow).first{it.text?.toString()==text&&it.isClickable};check(node.performAction(android.view.accessibility.AccessibilityNodeInfo.ACTION_CLICK))}
+        fun findNode(test:(android.view.accessibility.AccessibilityNodeInfo)->Boolean):android.view.accessibility.AccessibilityNodeInfo{
+            for(i in 0 until 50){nodes(uiAutomation.rootInActiveWindow).firstOrNull(test)?.let{return it};Thread.sleep(100)}
+            error("Settings accessibility node did not appear")
+        }
+        fun write(value:String){val node=findNode{it.className=="android.widget.EditText"};check(node.performAction(android.view.accessibility.AccessibilityNodeInfo.ACTION_SET_TEXT,Bundle().apply{putCharSequence(android.view.accessibility.AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE,value)}))}
+        fun click(text:String){val node=findNode{it.text?.toString()==text&&it.isClickable};check(node.performAction(android.view.accessibility.AccessibilityNodeInfo.ACTION_CLICK))}
         fun views(view:android.view.View):List<android.view.View>{val out=mutableListOf(view);if(view is android.view.ViewGroup)for(i in 0 until view.childCount)out.addAll(views(view.getChildAt(i)));return out}
         try{
             Thread.sleep(400);write("864209");click("Entrar")

@@ -176,10 +176,10 @@ class MainActivity : Activity() {
         reloadFromDisk()
         if(settings.splash){
             startingSplash=true
-            val splash=FrameLayout(this).apply{setBackgroundColor(ScreenStyles.BACKGROUND)}
-            val brand=ScreenStyles.label(this,"2Cam Digital Signage",36f).apply{gravity=Gravity.CENTER;textAlignment=View.TEXT_ALIGNMENT_CENTER}
+            val splash=FrameLayout(this).apply{setBackgroundColor(android.graphics.Color.WHITE)}
+            val brand=android.widget.ImageView(this).apply{setImageResource(R.drawable.brand_logo);scaleType=android.widget.ImageView.ScaleType.FIT_CENTER;contentDescription="2Cam Signage";setPadding(50,30,50,60)}
             splash.addView(brand,FrameLayout.LayoutParams(-1,-1))
-            splash.addView(ScreenStyles.label(this,DeviceNetwork.label(),18f),FrameLayout.LayoutParams(-1,-2,Gravity.BOTTOM))
+            splash.addView(ScreenStyles.label(this,DeviceNetwork.label(),18f).apply{setTextColor(android.graphics.Color.rgb(23,69,137));gravity=Gravity.CENTER},FrameLayout.LayoutParams(-1,-2,Gravity.BOTTOM))
             setContentView(splash)
             ui.postDelayed({startingSplash=false; if(token.load()==null)showPairing() else {showMode();sync();checkAppUpdates()}; ui.post(tick)},900)
         }else{
