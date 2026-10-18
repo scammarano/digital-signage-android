@@ -13,8 +13,10 @@ class PlaylistPreviewActivity:Activity(){
     private var items=JSONArray()
     private val worker=java.util.concurrent.Executors.newSingleThreadExecutor()
     private var restoreOverlay=false
+    private var previewCache:CacheManager?=null
     override fun onCreate(state:Bundle?){super.onCreate(state)
         val settings=SettingsStore(this);val cache=CacheManager(this,settings)
+        previewCache=cache
         restoreOverlay=OverlayService.running
         if(restoreOverlay)stopService(android.content.Intent(this,OverlayService::class.java))
         val model=cache.active()?.let{ManifestModel(it)}
@@ -26,6 +28,7 @@ class PlaylistPreviewActivity:Activity(){
         val layout=def?.optString("layout","fullscreen")?:"fullscreen"
         fun compatible(a:JSONArray):JSONArray{if(!key.startsWith("overlay_"))return a;return JSONArray().apply{for(i in 0 until a.length()){val item=a.getJSONObject(i);if(item.optString("mime").startsWith("image/"))put(item)}}}
         items=compatible(items)
+        cache.retainPreview(items)
         val root=ScreenStyles.column(this)
         root.addView(ScreenStyles.label(this,"PRUEBA · ${list?.optString("name")?:"Programación"}",20f))
         root.addView(ScreenStyles.label(this,"${DeviceNetwork.label()} · No cambia el modo ni la programación",15f))
@@ -46,7 +49,7 @@ class PlaylistPreviewActivity:Activity(){
                     items=compatible(preview.getJSONObject("fallback").getJSONArray("items"))
                     if(items.length()==0)board.text="La lista está vacía" else{deck=MediaDeck(media,cache,false,true);next()}
                 }}
-            }catch(e:Exception){runOnUiThread{if(!isFinishing)board.text="No se pudo preparar la lista: "+(e.message?:e.javaClass.simpleName)}}}
+            }catch(e:Exception){runOnUiThread{if(!isFinishing)board.text="No se pudo preparar la lista: "+(e.message?:e.javaClass.simpleName)}}finally{if(isFinishing||isDestroyed)cache.releasePreview()}}
         }else if(items.length()==0)board.text="Sin contenido en la programación actual"
         else{deck=MediaDeck(media,cache,false,true);next()}
     }
@@ -55,5 +58,5 @@ class PlaylistPreviewActivity:Activity(){
             android.widget.Toast.makeText(this,error,android.widget.Toast.LENGTH_LONG).show();finish()
         })
     }
-    override fun onDestroy(){deck?.release();worker.shutdownNow();if(restoreOverlay&&!ServiceGate(this).suspended)AndroidCompat.startServiceCompat(this,android.content.Intent(this,OverlayService::class.java));super.onDestroy()}
+    override fun onDestroy(){deck?.release();worker.shutdownNow();previewCache?.releasePreview();if(restoreOverlay&&!ServiceGate(this).suspended)AndroidCompat.startServiceCompat(this,android.content.Intent(this,OverlayService::class.java));super.onDestroy()}
 }

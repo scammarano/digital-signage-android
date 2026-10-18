@@ -369,7 +369,7 @@ class MainActivity : Activity() {
         }else FrameLayout(this).apply{addView(media,FrameLayout.LayoutParams(-1,-1))}
         root.setBackgroundColor(ScreenStyles.BACKGROUND)
         stage=media;deck=MediaDeck(media,cache,if(smart)false else settings.videoAudio,smart)
-        val hud=ScreenStyles.label(this,"Digital Signage",13f).apply{setBackgroundColor(0x990A1424.toInt());gravity=Gravity.END}
+        val hud=ScreenStyles.label(this,"Digital Signage · "+DeviceNetwork.label(),15f).apply{setBackgroundColor(0x990A1424.toInt());gravity=Gravity.END}
         status=hud
         if(settings.signageShowHud && settings.signageHudSeconds>0){
             root.addView(hud,FrameLayout.LayoutParams(-1,-2,Gravity.TOP))

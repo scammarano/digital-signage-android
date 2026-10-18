@@ -52,9 +52,11 @@ class SportsInstrumentation:Instrumentation(){
         exerciseMediaTiming()
         exercisePin()
         exerciseSettingsRemote()
+        exerciseLanTabs()
         exerciseOverlay()
         exerciseInstaller()
         exerciseDisplayRegions()
+        waitForIdleSync();Thread.sleep(400)
         exerciseApplicationCatalog()
         val settings=SettingsStore(targetContext)
         settings.prepareProductionStartup()
@@ -168,6 +170,34 @@ class SportsInstrumentation:Instrumentation(){
             runOnMainSync{check(views(activity.window.decorView).filterIsInstance<android.widget.Button>().any{it.text=="Buscar actualización de APK ahora"})}
             verificationDetails.append("TV_TABS_DPAD_PASS PIN tabs numeric_OK_editor persistence safe_width IP\n")
         }finally{runOnMainSync{activity.finish()};check(settings.applySnapshot(saved))}
+    }
+    private fun exerciseLanTabs(){
+        val settings=SettingsStore(targetContext);val oldPort=settings.localAdminPort
+        settings.localAdminPort=18787
+        val server=LocalAdminServer(targetContext,settings)
+        try{
+            server.start();val url=java.net.URL(server.address)
+            fun request(method:String,path:String,body:String="",cookie:String=""):String{
+                val bytes=body.toByteArray(Charsets.UTF_8)
+                java.net.Socket().use{s->s.connect(java.net.InetSocketAddress(url.host,url.port),3000);s.soTimeout=4000
+                    s.getOutputStream().apply{write(("$method $path HTTP/1.1\r\nHost: ${url.host}:${url.port}\r\nConnection: close\r\nCookie: $cookie\r\nContent-Length: ${bytes.size}\r\n\r\n").toByteArray());write(bytes);flush()}
+                    return s.getInputStream().bufferedReader().readText()
+                }
+            }
+            val login=request("POST","/pair","code="+server.code)
+            check(login.startsWith("HTTP/1.1 303"))
+            val cookie=Regex("DSLAN=[a-f0-9]{48}").find(login)!!.value
+            val page=request("GET","/",cookie=cookie)
+            check(page.startsWith("HTTP/1.1 200"))
+            check(Regex("data-tab-target='").findAll(page).count()==8)
+            check(Regex("data-tab-panel='").findAll(page).count()==8)
+            check(page.contains(DeviceNetwork.label())&&page.contains("formaction='/preview'"))
+            val script=Regex("<script>(.*?)</script>").find(page)!!.groupValues[1]
+            val hash=android.util.Base64.encodeToString(java.security.MessageDigest.getInstance("SHA-256").digest(script.toByteArray()),android.util.Base64.NO_WRAP)
+            check(page.contains("script-src 'sha256-$hash'")){"LAN tab script blocked by CSP"}
+            check(request("POST","/preview","key=signage_playlist_id",cookie).startsWith("HTTP/1.1 403")){"Preview CSRF bypass"}
+            verificationDetails.append("LAN_TABS_PASS authenticated form eight groups IP preview CSRF CSP\n")
+        }finally{server.close();settings.localAdminPort=oldPort}
     }
     private fun exerciseInstaller(){
         val source=java.io.File(targetContext.applicationInfo.sourceDir)
@@ -288,6 +318,7 @@ class SportsInstrumentation:Instrumentation(){
         val preview=JSONObject().put("fallback",JSONObject().put("items",org.json.JSONArray().put(JSONObject().put("sha256",sha).put("size",bytes.size))))
         cache.preview(SignageApi("https://preview.invalid/",null),preview){}
         check(cache.active()?.toString()==original){"Preview replaced active programming"}
+        cache.releasePreview()
         file.delete()
         check(failure==null && elapsed in 70L..900L){"Fractional image timing: $elapsed ms; $failure"}
         println("FRACTIONAL_MEDIA_PASS actual_image_ms=$elapsed")
