@@ -16,6 +16,10 @@ class SignageApi(private val baseUrl:String, private val token:String?) {
     fun service()=call("api-device.php?op=service").getJSONObject("service")
     fun reportService(data:JSONObject)=call("api-device.php?op=service",data)
     fun live()=call("api-device.php?op=live")
+    fun applicationConfig(app:String):JSONObject {
+        require(app in listOf("turnos","sports"))
+        return call("api-application-config.php?app=$app")
+    }
     fun latestUpdate(channel:String,sdk:Int):JSONObject {
         require(channel in listOf("stable","beta","debug"))
         return call("api-app-update.php?channel=$channel&sdk=$sdk")
@@ -40,7 +44,7 @@ class SignageApi(private val baseUrl:String, private val token:String?) {
             val raw=(if(code in 200..299)conn.inputStream else conn.errorStream)?.use{readBounded(it,4*1024*1024)}?:""
             if(code !in 200..299){
                 val msg=try{JSONObject(raw).optString("error","HTTP $code")}catch(_:Exception){"HTTP $code"}
-                throw IllegalStateException(msg.take(250))
+                throw PortalHttpException(code,msg.take(250))
             }
             return JSONObject(raw)
         }finally{conn.disconnect()}
@@ -61,4 +65,6 @@ class SignageApi(private val baseUrl:String, private val token:String?) {
         return conn
     }
 }
+
+class PortalHttpException(val status:Int,message:String):IllegalStateException(message)
 

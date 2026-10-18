@@ -54,6 +54,7 @@ class SportsInstrumentation:Instrumentation(){
         exerciseOverlay()
         exerciseInstaller()
         exerciseDisplayRegions()
+        exerciseApplicationCatalog()
         val settings=SettingsStore(targetContext)
         settings.prepareProductionStartup()
         val savedSettings=settings.publicSnapshot()
@@ -94,6 +95,42 @@ class SportsInstrumentation:Instrumentation(){
         check(host.controls().length()==3);try{host.openPairing("home");error("Aceptó cuarto control")}catch(e:LocalSportsHost.Failure){check(e.status==409)}
         host.revoke(pair.getString("controlId"));check(host.controls().length()==2)
         runOnMainSync{activity.finish()}
+    }
+    private fun exerciseApplicationCatalog(){
+        val app="turnos";val base="https://portal.invalid/public/";val secret="catalog-ci-"+System.nanoTime()
+        fun entity(id:Int,kind:String,parent:Int?=null)=JSONObject().put("id",id).put("kind",kind).put("name","$kind $id")
+            .put("parent_id",parent?:JSONObject.NULL).put("enabled",true).put("config",JSONObject()).put("device_id",if(kind=="screen")91 else JSONObject.NULL)
+        fun snapshot(application:String="turnos",revision:Int=2):JSONObject{
+            val rows=org.json.JSONArray()
+            if(application=="turnos")rows.put(entity(1,"room")).put(entity(2,"screen",1)).put(entity(3,"service",1))
+            else rows.put(entity(1,"venue")).put(entity(2,"court",1)).put(entity(3,"screen",2)).put(entity(4,"team",1))
+            return JSONObject().put("schema_version",1).put("application",application).put("tenant_id",7).put("revision",revision)
+                .put("settings",JSONObject().put("title","Empresa de prueba")).put("entities",rows)
+        }
+        fun rejects(action:()->Unit){var rejected=false;try{action()}catch(_:Exception){rejected=true};check(rejected)}
+        val cache=ApplicationCatalog(targetContext,base,secret,app)
+        try{
+            check(cache.cached()==null)
+            val input=snapshot();cache.accept(input);input.put("revision",999)
+            check(cache.cached()!!.getInt("revision")==2)
+            check(ApplicationCatalog.scopeLabel(cache.cached()!!).contains("room 1"))
+            rejects{cache.accept(snapshot(revision=1))}
+            rejects{cache.accept(snapshot().put("schema_version",2))}
+            rejects{cache.accept(snapshot().put("tenant_id",8))}
+            rejects{cache.accept(snapshot("sports"))}
+            rejects{cache.accept(snapshot().apply{getJSONArray("entities").put(entity(8,"room"))})}
+            rejects{cache.accept(snapshot().apply{getJSONArray("entities").put(entity(9,"screen",1))})}
+            rejects{cache.accept(snapshot().apply{getJSONArray("entities").getJSONObject(2).put("parent_id",90)})}
+            check(cache.cached()!!.getInt("revision")==2){"Rejected snapshot destroyed last valid copy"}
+            check(ApplicationCatalog(targetContext,base,secret+"other",app).cached()==null)
+            check(ApplicationCatalog(targetContext,base+"other/",secret,app).cached()==null)
+            check(ApplicationCatalog(targetContext,base,secret,"sports").cached()==null)
+            val sports=snapshot("sports");ApplicationCatalog.validate(sports,"sports")
+            rejects{ApplicationCatalog.validate(sports.apply{getJSONArray("entities").getJSONObject(3).put("parent_id",99)},"sports")}
+            cache.accept(snapshot(revision=3));check(cache.cached()!!.getInt("revision")==3)
+            cache.revoke();check(cache.cached()==null)
+            verificationDetails.append("APPLICATION_CATALOG_PASS schema scope revision isolation persistence revocation\n")
+        }finally{cache.revoke()}
     }
     private fun exerciseInstaller(){
         val source=java.io.File(targetContext.applicationInfo.sourceDir)

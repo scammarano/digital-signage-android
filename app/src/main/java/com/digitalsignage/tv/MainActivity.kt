@@ -84,6 +84,46 @@ class MainActivity : Activity() {
     private var remoteControlRevision=0L
     private var syncInFlight=false
     private var lastLive=JSONObject()
+    private var applicationCatalog:JSONObject?=null
+    private var applicationState="Configuración central: pendiente"
+    private var lastApplicationPoll=0L
+    private var applicationPollBusy=false
+    private var applicationBinding=""
+    private fun pollApplicationConfig(){
+        if(activeMode !in 3..4||serviceGate.suspended)return
+        val secret=token.load()?:return;val portal=settings.portalUrl
+        val app=if(activeMode==3)"turnos" else "sports"
+        val binding=portal+"\n"+secret+"\n"+app
+        if(binding!=applicationBinding){applicationBinding=binding;applicationCatalog=null;lastApplicationPoll=0L;applicationState="Configuración central: pendiente"}
+        val now=System.currentTimeMillis();if(applicationPollBusy||now-lastApplicationPoll<15000L)return
+        applicationPollBusy=true;lastApplicationPoll=now
+        worker.execute{
+            val store=ApplicationCatalog(this,portal,secret,app)
+            var value=store.cached();var state="Configuración central: sin conexión";var failure:Exception?=null
+            try{
+                val received=SignageApi(portal,secret).applicationConfig(app)
+                val old=value?.getLong("revision")
+                value=store.accept(received)
+                state="${app.uppercase()} r${value.getLong("revision")} · guardada en dispositivo"
+                if(old!=value.getLong("revision")){
+                    logs.record("info","application_config_received","$app r${value.getLong("revision")}")
+                    logs.record("info","application_config_applied","$app r${value.getLong("revision")}","Catálogo validado y persistido; eventos de operación independientes")
+                }
+            }catch(e:Exception){
+                failure=e
+                if(e is PortalHttpException&&e.status in listOf(401,403,422)){store.revoke();value=null;state="Configuración central: asignación no disponible (HTTP ${e.status})"}
+                else if(value!=null)state="${app.uppercase()} r${value.getLong("revision")} · copia local, consulta fallida"
+            }
+            val result=value;val status=state
+            ui.post{
+                applicationPollBusy=false
+                if(token.load()!=secret||settings.portalUrl!=portal||applicationBinding!=binding)return@post
+                applicationCatalog=result;applicationState=status
+                failure?.let{logs.record("warn","application_config_unavailable",app,it.javaClass.simpleName)}
+                if(activeMode==if(app=="turnos")3 else 4)drawLiveBoard()
+            }
+        }
+    }
     private var mode3Header:TextView?=null
     private var lanBoard:SportsBoardView?=null
     private var liveAdCycleStartedAt=0L
@@ -98,7 +138,8 @@ class MainActivity : Activity() {
         if(!::settings.isInitialized)return
         debugHud.update(settings.debugHudEnabled,
             DeviceDebug.snapshot(this,settings,activeMode,lastSync,lastError,
-                "Medios: "+(if(::cache.isInitialized)cache.countMedia() else 0)))
+                "Medios: "+(if(::cache.isInitialized)cache.countMedia() else 0)+
+                    (if(activeMode in 3..4)"\n$applicationState" else "")))
     }
     private val tick=object:Runnable{override fun run(){
         try{pulse()}catch(e:Throwable){
@@ -328,8 +369,13 @@ class MainActivity : Activity() {
         selectPlaylist()
     }
     private fun drawLiveBoard(){
+        val expectedApp=if(activeMode==4)"sports" else "turnos"
+        val currentBinding=settings.portalUrl+"\n"+(token.load()?:"")+"\n"+expectedApp
+        val catalog=applicationCatalog?.takeIf{applicationBinding==currentBinding&&it.optString("application")==expectedApp}
+        val scope=catalog?.let{ApplicationCatalog.scopeLabel(it)}?:""
         if(activeMode==4 && settings.settingString("scoreboard_source")=="lan"){
             SportsRuntime.start(this)
+            lanBoard?.scopeLabel=scope
             lanBoard?.update(SportsRuntime.host(this).displaySnapshot(),SportsRuntime.board(this))
             if(SportsRuntime.error.isBlank() && (DeviceDebug.effective(this)!=settings.remoteRevision || DeviceDebug.effectiveMode(this)!=4))
                 DeviceDebug.record(this,logs,"effective",settings.remoteRevision,"Sports directo LAN mostrado",4)
@@ -337,11 +383,11 @@ class MainActivity : Activity() {
         }
         val m=lastLive;val type=if(activeMode==4)"scoreboard" else "queue";val d=m.optJSONObject("payload")?:JSONObject()
         if(m.optString("widget_type",type)!=type){
-            mode3Header?.text=if(type=="queue")"SALA DE ESPERA\nEsperando turnos desde el portal"
+            mode3Header?.text=(if(scope.isBlank())"" else "$scope\n")+if(type=="queue")"SALA DE ESPERA\nEsperando turnos desde el portal"
                 else "MARCADOR\nEsperando puntos desde el portal"
             return
         }
-        mode3Header?.text=if(type=="scoreboard"){
+        mode3Header?.text=(if(scope.isBlank())"" else "$scope\n")+if(type=="scoreboard"){
             "${d.optString("competition","PARTIDO")}\n${d.optString("home","LOCAL")}    ${d.optString("home_score","0")} : ${d.optString("away_score","0")}    ${d.optString("away","VISITANTE")}\n${d.optString("period","")}   ${d.optString("clock","")}".trim()
         }else{
             "${d.optString("title","SALA DE ESPERA")}\nTURNO  ${d.optString("ticket","--")}\nPUESTO ${d.optString("counter","--")}\n${d.optString("message","")}".trim()
@@ -435,6 +481,7 @@ class MainActivity : Activity() {
         if(System.currentTimeMillis()-lastControlPoll>=15000L)checkRemoteSync()
         checkAppUpdates()
         if(activeMode in 3..4){
+            pollApplicationConfig()
             if(activeMode==4 && settings.settingString("scoreboard_source")=="lan")drawLiveBoard()
             else if(System.currentTimeMillis()-lastLivePoll>settings.smartPollSec*1000L)pollLive()
         }
@@ -453,6 +500,7 @@ class MainActivity : Activity() {
                     }
                     lastCallSequence=seq
                 }
+                if(token.load()!=secret)return@post
                 lastLive=live;drawLiveBoard()
             }}catch(_:Exception){}}
     }
@@ -471,7 +519,7 @@ class MainActivity : Activity() {
         val fields=listOf("media_formats","orientation","timezone","schedules","fallback","mode_blocks","device_options","playlist_catalog")
         return fields.joinToString("|"){key->obj.opt(key)?.toString()?:""}
     }
-    private fun sync(){val secret=token.load()?:return;if(syncInFlight)return;syncInFlight=true;lastSync=System.currentTimeMillis()
+    private fun sync(){val secret=token.load()?:return;if(syncInFlight)return;syncInFlight=true;lastSync=System.currentTimeMillis();lastApplicationPoll=0L
         logs.record("info","sync","Inicio de sincronización")
         worker.execute{
             try{

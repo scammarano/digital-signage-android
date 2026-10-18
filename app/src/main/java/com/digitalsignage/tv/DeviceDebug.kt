@@ -60,7 +60,7 @@ object DeviceDebug {
             "Revisión: recibida r${received(c)} / guardada r${applied(c)} / efectiva r${effective(c)} (${mode(effectiveMode(c))})\n" +
             "Últ. sync $sync · $eventAt: ${lastEvent(c)}" +
             (if(lastError.isBlank())"" else "\nERROR: ${lastError.take(120)}") +
-            (if(extra.isBlank())"" else "\n${extra.take(120)}")
+            (if(extra.isBlank())"" else "\n${extra.take(260)}")
     }
 }
 

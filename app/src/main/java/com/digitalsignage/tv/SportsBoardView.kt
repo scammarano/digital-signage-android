@@ -12,6 +12,7 @@ import org.json.JSONObject
 class SportsBoardView(context:Context):View(context){
     private val paint=Paint(Paint.ANTI_ALIAS_FLAG)
     private var snapshot:JSONObject?=null
+    var scopeLabel=""
     var summaryText="Preparando Sports…";private set
     fun update(value:JSONObject,summary:String){snapshot=value;summaryText=summary;contentDescription=summary;invalidate()}
     override fun onDraw(canvas:Canvas){
@@ -26,6 +27,7 @@ class SportsBoardView(context:Context):View(context){
             val length=paint.measureText(value);if(length>maxWidth)paint.textSize=size*maxWidth/length
             canvas.drawText(value,x,y,paint)
         }
+        if(scopeLabel.isNotBlank())text(scopeLabel,w*.04f,h*.07f,base*.30f,w*.92f)
         text("PUNTOS",w*.49f,h*.17f,base*.38f,w*.19f)
         text("JUEGOS",w*.72f,h*.17f,base*.38f,w*.13f)
         text("SETS",w*.88f,h*.17f,base*.38f,w*.11f)
