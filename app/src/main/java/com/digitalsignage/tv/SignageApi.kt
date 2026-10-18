@@ -13,14 +13,21 @@ class SignageApi(private val baseUrl:String, private val token:String?) {
         return call("api-device.php?op=pair",JSONObject().put("code",code))
     }
     fun manifest()=call("api-device.php?op=manifest")
+    fun previewPlaylist(id:Int):JSONObject {require(id>0);return call("api-device.php?op=preview&playlist_id=$id")}
+    fun service()=call("api-device.php?op=service").getJSONObject("service")
+    fun reportService(data:JSONObject)=call("api-device.php?op=service",data)
     fun live()=call("api-device.php?op=live")
+    fun applicationConfig(app:String):JSONObject {
+        require(app in listOf("turnos","sports"))
+        return call("api-application-config.php?app=$app")
+    }
     fun latestUpdate(channel:String,sdk:Int):JSONObject {
         require(channel in listOf("stable","beta","debug"))
         return call("api-app-update.php?channel=$channel&sdk=$sdk")
     }
     fun desiredConfig()=call("api-device-config.php?op=desired")
     fun reportConfig(data:JSONObject)=call("api-device-config.php?op=report",data)
-    fun heartbeat(data:JSONObject)=call("api-device.php?op=heartbeat",data)
+    fun heartbeat(data:JSONObject)=call("api-device.php?op=heartbeat",data.put("local_ip",DeviceNetwork.addresses().firstOrNull()?:JSONObject.NULL))
     fun control():JSONObject=call("api-device-telemetry.php?op=control")
     fun acknowledgeControl(revision:Long):JSONObject=call("api-device-telemetry.php?op=ack",JSONObject().put("revision",revision))
     fun submitLogs(events:org.json.JSONArray):JSONObject=call("api-device-telemetry.php?op=logs",JSONObject().put("events",events))
@@ -38,7 +45,7 @@ class SignageApi(private val baseUrl:String, private val token:String?) {
             val raw=(if(code in 200..299)conn.inputStream else conn.errorStream)?.use{readBounded(it,4*1024*1024)}?:""
             if(code !in 200..299){
                 val msg=try{JSONObject(raw).optString("error","HTTP $code")}catch(_:Exception){"HTTP $code"}
-                throw IllegalStateException(msg.take(250))
+                throw PortalHttpException(code,msg.take(250))
             }
             return JSONObject(raw)
         }finally{conn.disconnect()}
@@ -59,3 +66,6 @@ class SignageApi(private val baseUrl:String, private val token:String?) {
         return conn
     }
 }
+
+class PortalHttpException(val status:Int,message:String):IllegalStateException(message)
+

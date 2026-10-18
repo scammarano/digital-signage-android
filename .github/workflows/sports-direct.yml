@@ -1,16 +1,45 @@
 name: Fire Sports direct LAN APK
 on:
   push:
-    branches: ['feat/sports-direct-lan', 'feat/config-ack-debug-v0411', 'feat/player-playlists-remote-v0412']
+    branches: ['feat/sports-direct-lan', 'feat/config-ack-debug-v0411', 'feat/player-playlists-remote-v0412', 'feat/four-modes-parity-v0413']
   workflow_dispatch:
 permissions:
   contents: read
+  actions: read
 jobs:
   build-test:
     runs-on: ubuntu-latest
     timeout-minutes: 25
+    services:
+      mysql:
+        image: mysql:8.0
+        env:
+          MYSQL_ROOT_PASSWORD: testpass
+          MYSQL_DATABASE: signage_catalog_test
+        ports: ['3306:3306']
+        options: >-
+          --health-cmd="mysqladmin ping -ptestpass"
+          --health-interval=5s --health-timeout=5s --health-retries=20
+    strategy:
+      fail-fast: false
+      matrix:
+        api: [22, 29]
     steps:
       - uses: actions/checkout@v4
+      - uses: actions/checkout@v4
+        with:
+          repository: scammarano/2camdigitaltvweb
+          ref: ae6cc0c09c0dda01259450a4c78c810a074e0e6c
+          path: portal-fixture
+      - uses: shivammathur/setup-php@v2
+        with:
+          php-version: '8.1'
+          extensions: pdo_mysql, zip, openssl
+      - name: Generate real PHP29 scoped catalogs for Android contract verification
+        run: |
+          php -r 'file_put_contents("portal-fixture/config/config.php", "<?php return ".var_export(["app_url"=>"https://catalog.invalid","db_host"=>"127.0.0.1","db_name"=>"signage_catalog_test","db_user"=>"root","db_pass"=>"testpass"],true).";");'
+          php portal-fixture/tests/config_tenant_test.php
+          php scripts/create_portal_catalog_fixtures.php
       - uses: actions/setup-java@v4
         with:
           distribution: temurin
@@ -26,6 +55,8 @@ jobs:
         with:
           path: ~/.android/debug.keystore
           key: digital-signage-sports-debug-v1
+      - name: Candidate signing policy
+        run: echo 'CI produces a test-signed candidate. Customer delivery requires the permanent private key and certificate verification.'
       - run: python3 scripts/create_icon.py
       - name: Assert DEBUG HUD and runtime ACK are wired
         run: |
@@ -45,15 +76,17 @@ jobs:
           grep -q "sdkVersion:'19'" /tmp/fire-apk-metadata.txt
       - name: Package Fire APK
         run: |
-          mkdir delivery
-          cp app/build/outputs/apk/debug/app-debug.apk delivery/2Cam-Digital-Signage-v0.4.12-debug-playlists.apk
+          mkdir -p delivery/tools
+          cp "$ANDROID_HOME/build-tools/35.0.0/lib/apksigner.jar" delivery/tools/apksigner.jar
+          cp app/build/outputs/apk/debug/app-debug.apk delivery/2Cam-Digital-Signage-v0.4.21-debug-startup.apk
           cp docs/GUIA_TRANSICIONES_PLAYLISTS_v0412.md delivery/GUIA_TRANSICIONES.md
           cp DEBUG_ACK_LEEME.md delivery/DIAGNOSTICO.md
           cd delivery
           sha256sum *.apk > SHA256SUMS.txt
       - uses: actions/upload-artifact@v4
+        if: matrix.api == 22
         with:
-          name: 2cam-fire-0.4.12-debug-playlists-APK
+          name: 2cam-fire-0.4.21-UNSIGNED-CANDIDATE
           path: delivery/
           retention-days: 30
       - name: Enable KVM
@@ -63,7 +96,7 @@ jobs:
           sudo udevadm trigger --name-match=kvm
       - uses: reactivecircus/android-emulator-runner@v2
         with:
-          api-level: 22
+          api-level: ${{ matrix.api }}
           target: default
           arch: x86_64
           profile: Nexus 6
@@ -71,14 +104,29 @@ jobs:
           script: |
             adb install -r app/build/outputs/apk/debug/app-debug.apk
             adb install -r app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+            adb shell svc wifi enable
+            # Android29's default image has one virtual radio0 adapter and no dummy
+            # driver. Repurpose that adapter as an isolated static Ethernet test LAN.
+            # No external traffic is needed by the emulator; production is unchanged.
+            adb root
+            adb wait-for-device
+            if [ "${{ matrix.api }}" -ge 29 ]; then adb shell svc data disable; adb shell ip link set radio0 down; adb shell ip link set radio0 name eth-ci; adb shell ip addr add 172.18.22.2/24 dev eth-ci; adb shell ip link set eth-ci up; fi
+            adb shell ip -4 address
+            adb shell settings put global install_non_market_apps 1
+            adb shell settings put secure install_non_market_apps 1
+            if [ "${{ matrix.api }}" -ge 26 ]; then adb shell appops set com.digitalsignage.tv REQUEST_INSTALL_PACKAGES allow; fi
+            if [ "${{ matrix.api }}" -ge 23 ]; then adb shell appops set com.digitalsignage.tv SYSTEM_ALERT_WINDOW allow; fi
             adb shell am instrument -w com.digitalsignage.tv.test/com.digitalsignage.tv.SportsInstrumentation | tee /tmp/fire-sports-test.txt
+            adb exec-out run-as com.digitalsignage.tv cat files/sports-region.png > /tmp/fire-sports-region.png
             grep -q SPORTS_FIRE_DIRECT_PASS /tmp/fire-sports-test.txt
       - uses: actions/upload-artifact@v4
         if: always()
         with:
-          name: fire-sports-verification
+          name: fire-sports-verification-api${{ matrix.api }}
           path: |
             sports-core/build/reports/tests/test/
             /tmp/fire-sports-test.txt
             /tmp/fire-apk-metadata.txt
+            /tmp/fire-sports-region.png
           if-no-files-found: ignore
+

@@ -15,7 +15,7 @@ import java.io.File
 import java.util.concurrent.Executors
 
 /** Double-buffered image/video viewer; old frame remains until next element is ready. */
-class MediaDeck(private val stage:FrameLayout,private val cache:CacheManager,private val playAudio:Boolean) {
+class MediaDeck(private val stage:FrameLayout,private val cache:CacheManager,private val playAudio:Boolean,private val regionIsSized:Boolean=false) {
     private val decode=Executors.newSingleThreadExecutor()
     private val main=Handler(Looper.getMainLooper())
     private var serial=0
@@ -23,13 +23,15 @@ class MediaDeck(private val stage:FrameLayout,private val cache:CacheManager,pri
     private var currentVideo:VideoView?=null
     private var pendingTimer:Runnable?=null
     fun clear(){++serial;pendingTimer?.let{main.removeCallbacks(it)};pendingTimer=null;currentVideo?.stopPlayback();currentVideo=null;current=null;stage.removeAllViews()}
+    fun release(){clear();decode.shutdownNow()}
     private fun sizeFor(item:JSONObject):FrameLayout.LayoutParams {
+        if(regionIsSized)return FrameLayout.LayoutParams(-1,-1)
         val width=stage.width.takeIf{it>0}?:stage.resources.displayMetrics.widthPixels
         val height=stage.height.takeIf{it>0}?:stage.resources.displayMetrics.heightPixels
         val layout=item.optString("layout","fullscreen")
         return when(layout){
-          "bottom"->FrameLayout.LayoutParams(width,(height*0.20f).toInt().coerceAtLeast(1),Gravity.BOTTOM)
-          "side"->FrameLayout.LayoutParams((width*0.40f).toInt().coerceAtLeast(1),height,Gravity.END)
+          "bottom"->FrameLayout.LayoutParams(width,(height*cache.formatPercent("bottom")/100f).toInt().coerceAtLeast(1),Gravity.BOTTOM)
+          "side"->FrameLayout.LayoutParams((width*cache.formatPercent("side")/100f).toInt().coerceAtLeast(1),height,Gravity.END)
           "half_horizontal"->FrameLayout.LayoutParams(width,height/2,Gravity.BOTTOM)
           "half_vertical"->FrameLayout.LayoutParams(width/2,height,Gravity.END)
           else->FrameLayout.LayoutParams(-1,-1)
@@ -67,7 +69,7 @@ class MediaDeck(private val stage:FrameLayout,private val cache:CacheManager,pri
                         val image=ImageView(stage.context).apply{scaleType=ImageView.ScaleType.FIT_CENTER;setImageBitmap(bitmap)}
                         box.addView(image,FrameLayout.LayoutParams(-1,-1));switchTo(box,parms,item,null);onShown()
                         pendingTimer=Runnable{if(stamp==serial)onComplete()}
-                        main.postDelayed(pendingTimer!!,item.optLong("duration",10).coerceIn(1,3600)*1000)
+                        main.postDelayed(pendingTimer!!,MediaTiming.durationMs(item))
                     }
                 }catch(e:Exception){main.post{if(stamp==serial)onError(e.message?:"Imagen no compatible")}}
             }
@@ -77,7 +79,7 @@ class MediaDeck(private val stage:FrameLayout,private val cache:CacheManager,pri
     /** Crossfade time and image zoom movement are independently configurable. */
     private fun switchTo(box:FrameLayout,params:FrameLayout.LayoutParams,item:JSONObject,video:VideoView?){
         val effect=item.optString("transition","fade")
-        val slideMs=item.optLong("duration",10).coerceIn(1L,3600L)*1000L
+        val slideMs=MediaTiming.durationMs(item)
         val crossfade=item.optLong("transition_ms",600L).coerceIn(0L,5000L)
             .coerceAtMost(slideMs/2)
         val prev=current
@@ -130,3 +132,4 @@ class MediaDeck(private val stage:FrameLayout,private val cache:CacheManager,pri
         currentVideo=video
     }
 }
+

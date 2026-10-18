@@ -9,14 +9,21 @@ import java.security.MessageDigest
 
 /** Atomic manifest activation: last known good remains active until all media are validated. */
 class CacheManager(private val context:Context,private val settings:SettingsStore) {
-    companion object { private val syncLock=Any() }
+    companion object { private val syncLock=Any();private val previewKeep=mutableMapOf<String,Set<String>>() }
+    private val previewKey=java.util.UUID.randomUUID().toString()
+    fun retainPreview(items:org.json.JSONArray)=synchronized(syncLock){previewKeep[previewKey]=(0 until items.length()).map{items.getJSONObject(it).optString("sha256")}.toSet()}
+    fun releasePreview()=synchronized(syncLock){previewKeep.remove(previewKey)}
     private val internal=File(context.filesDir,"signage-manifest-v1").apply{mkdirs()}
     fun active():JSONObject?=parse(File(internal,"active.json"))
     private fun parse(file:File):JSONObject?=try{if(file.isFile)JSONObject(file.readText())else null}catch(_:Exception){null}
     fun mediaFile(sha:String):File=File(settings.cacheDirectory(),sha)
+    fun formatPercent(layout:String):Int=MediaFormats.percent(active()?.optJSONObject("media_formats"),layout)
     fun countMedia():Int=settings.cacheDirectory().listFiles()?.count{it.isFile&&it.name.matches(Regex("[a-f0-9]{64}"))}?:0
     fun freeBytes():Long=StatFs(settings.cacheDirectory().absolutePath).availableBytes
-    fun sync(api:SignageApi,manifest:JSONObject,onProgress:(String)->Unit):Int = synchronized(syncLock) {
+    fun sync(api:SignageApi,manifest:JSONObject,onProgress:(String)->Unit):Int=syncInternal(api,manifest,true,onProgress)
+    fun preview(api:SignageApi,manifest:JSONObject,onProgress:(String)->Unit):Int=syncInternal(api,manifest,false,onProgress)
+    private fun syncInternal(api:SignageApi,manifest:JSONObject,activate:Boolean,onProgress:(String)->Unit):Int = synchronized(syncLock) {
+        MediaFormats.validate(manifest.optJSONObject("media_formats"))
         val model=ManifestModel(manifest);val list=model.allMedia();val cache=settings.cacheDirectory()
         val expected=list.sumOf{maxOf(it.optLong("size",0),0)}
         val limit=settings.cacheMb.toLong()*1024L*1024L
@@ -59,6 +66,7 @@ class CacheManager(private val context:Context,private val settings:SettingsStor
                 done++
             }finally{if(tmp.exists())tmp.delete()}
         }
+        if(!activate){previewKeep[previewKey]=model.allMedia().map{it.optString("sha256")}.toSet();return@synchronized done}
         // Keep prior playlist content until the new manifest is complete; never switch on partial downloads.
         val now=File(internal,"active.json");val previous=File(internal,"previous.json")
         val candidate=File(internal,"candidate.json")
@@ -67,8 +75,10 @@ class CacheManager(private val context:Context,private val settings:SettingsStor
         if(!candidate.renameTo(now))throw IllegalStateException("No se pudo activar la programación")
         // Keep media for the current AND previous manifests, then remove unreferenced completed files.
         val keep=model.allMedia().map{it.optString("sha256")}.toMutableSet()
+        previewKeep.values.forEach{keep.addAll(it)}
         parse(previous)?.let{keep.addAll(ManifestModel(it).allMedia().map{x->x.optString("sha256")})}
         cache.listFiles()?.forEach{if(it.isFile&&it.name.matches(Regex("[a-f0-9]{64}"))&&!keep.contains(it.name))it.delete()}
         return done
     }
 }
+

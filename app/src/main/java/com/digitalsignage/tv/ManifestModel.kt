@@ -11,7 +11,7 @@ class ManifestModel(val json:JSONObject){
     fun localNow():LocalDateTime = LocalDateTime.now(timezone)
     fun activeMode(settings:SettingsStore):Int {
         val override=settings.manualMode
-        if(override in 1..3 && (settings.enabledModes and (1 shl (override-1)))!=0)return override
+        if(override in 1..4 && (settings.enabledModes and (1 shl (override-1)))!=0)return override
         val rows=json.optJSONArray("mode_blocks")?:JSONArray()
         val blocks=ArrayList<TimeRules.ModeBlock>()
         for(i in 0 until rows.length()){
@@ -21,7 +21,8 @@ class ManifestModel(val json:JSONObject){
                 r.optString("valid_from").takeIf{it.isNotBlank()&&it!="null"},
                 r.optString("valid_until").takeIf{it.isNotBlank()&&it!="null"},r.optInt("priority"),r.optInt("enabled",1)==1))
         }
-        val remoteMask=json.optJSONObject("device_options")?.optInt("modes_enabled",7)?:7
+        val legacyMask=json.optJSONObject("device_options")?.optInt("modes_enabled",15)?:15
+        val remoteMask=if(json.optInt("schema_version",2)<3 && legacyMask and 4!=0)legacyMask or 8 else legacyMask
         return TimeRules.mode(blocks,settings.primaryMode,settings.enabledModes and remoteMask,localNow())
     }
     fun entries():JSONArray {
@@ -36,6 +37,22 @@ class ManifestModel(val json:JSONObject){
         if(selectedItems!=null&&selectedItems.length()>0)return selectedItems
         return json.optJSONObject("fallback")?.optJSONArray("items") ?: JSONArray()
     }
+    fun entries(settings:SettingsStore,mode:Int):JSONArray {
+        val id=settings.playlistId(mode)
+        if(mode==1 && id==0){
+            val legacy=entries();val full=JSONArray()
+            for(i in 0 until legacy.length()){val item=legacy.optJSONObject(i)?:continue;if(item.optString("layout","fullscreen")=="fullscreen")full.put(item)}
+            return full
+        }
+        if(id==0)return JSONArray()
+        val catalog=catalog()
+        val list=catalog.optJSONObject(id.toString())?:return JSONArray()
+        val layout=settings.modeLayout(mode)
+        if(list.optString("layout")!=layout)return JSONArray()
+        val ori=list.optString("orientation")
+        if(ori!="any" && ori!=json.optString("orientation"))return JSONArray()
+        return list.optJSONArray("items")?:JSONArray()
+    }
     fun allMedia():List<JSONObject>{
         val out=linkedMapOf<String,JSONObject>()
         fun add(a:JSONArray?){if(a==null)return;for(i in 0 until a.length()){
@@ -44,7 +61,24 @@ class ManifestModel(val json:JSONObject){
         add(json.optJSONObject("fallback")?.optJSONArray("items"))
         val schedules=json.optJSONArray("schedules")?:JSONArray()
         for(i in 0 until schedules.length())add(schedules.optJSONObject(i)?.optJSONArray("items"))
+        val catalog=json.optJSONObject("playlist_catalog")
+        catalog?.keys()?.forEach{k->add(catalog.optJSONObject(k)?.optJSONArray("items"))}
         return out.values.toList()
     }
     fun widget():JSONObject = json.optJSONObject("live")?:JSONObject()
+    /** Legacy portals expose one default playlist; still require explicit per-mode assignment. */
+    fun catalog():JSONObject {
+        json.optJSONObject("playlist_catalog")?.let{return it}
+        val result=JSONObject();val fallback=json.optJSONObject("fallback")?:return result
+        val id=fallback.optInt("playlist_id")
+        if(id<=0)return result
+        val items=fallback.optJSONArray("items")?:JSONArray()
+        var images=0
+        for(i in 0 until items.length())if(items.optJSONObject(i)?.optString("mime")?.startsWith("image/")==true)images++
+        result.put(id.toString(),JSONObject().put("id",id).put("name",fallback.optString("playlist_name","Playlist #$id"))
+            .put("layout",fallback.optString("layout","fullscreen")).put("orientation",fallback.optString("orientation",json.optString("orientation")))
+            .put("items",items).put("item_count",items.length()).put("image_count",images))
+        return result
+    }
 }
+

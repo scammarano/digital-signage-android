@@ -25,6 +25,7 @@ import java.util.concurrent.Executors
 class MainActivity : Activity() {
     private val ui=Handler(Looper.getMainLooper())
     private val worker=Executors.newSingleThreadExecutor()
+    private val applicationWorker=Executors.newSingleThreadExecutor()
     private lateinit var settings:SettingsStore
     private lateinit var token:SecureToken
     private lateinit var cache:CacheManager
@@ -45,6 +46,22 @@ class MainActivity : Activity() {
     private var lastError=""
     private lateinit var logs:DeviceLogs
     private var lastControlPoll=0L
+    private val serviceGate by lazy{ServiceGate(this)}
+    private var serviceScreen=false
+    private var servicePollAt=0L
+    @Volatile private var servicePollBusy=false
+    private fun pollService(){
+        val secret=token.load()?:return
+        val now=System.currentTimeMillis();if(servicePollBusy||now-servicePollAt<15000L)return
+        servicePollAt=now;servicePollBusy=true
+        worker.execute{try{
+            val api=SignageApi(settings.portalUrl,secret);val state=api.service()
+            if(token.load()==secret){serviceGate.accept(state);ui.post{
+                showMode()
+                ui.postDelayed({if(!isFinishing&&token.load()==secret&&(!serviceGate.suspended||!OverlayService.visible))worker.execute{try{api.reportService(serviceGate.confirmation())}catch(_:Exception){}}},200L)
+            }}
+        }catch(_:Exception){}finally{servicePollBusy=false}}
+    }
     private var lastDebugConfigPoll=0L
     private fun pollDebugConfig() {
         if(!settings.debugHudEnabled || token.load()==null)return
@@ -68,7 +85,58 @@ class MainActivity : Activity() {
     private var remoteControlRevision=0L
     private var syncInFlight=false
     private var lastLive=JSONObject()
+    private var applicationCatalog:JSONObject?=null
+    private var applicationState="Configuración central: pendiente"
+    private var lastApplicationPoll=0L
+    private var applicationPollBusy=false
+    private var applicationBinding=""
+    private fun pollApplicationConfig(){
+        if(activeMode !in 3..4||serviceGate.suspended)return
+        val secret=token.load()?:return;val portal=settings.portalUrl
+        val app=if(activeMode==3)"turnos" else "sports"
+        val binding=portal+"\n"+secret+"\n"+app
+        if(binding!=applicationBinding){applicationBinding=binding;applicationCatalog=null;lastApplicationPoll=0L;applicationState="Configuración central: pendiente"}
+        val now=System.currentTimeMillis();if(applicationPollBusy||now-lastApplicationPoll<15000L)return
+        applicationPollBusy=true;lastApplicationPoll=now
+        applicationWorker.execute{
+            val store=ApplicationCatalog(this,portal,secret,app)
+            var value=store.cached();var state="Configuración central: consulta fallida";var failure:Exception?=null
+            val local=value
+            if(local!=null)ui.post{
+                if(!isFinishing&&!isDestroyed&&token.load()==secret&&settings.portalUrl==portal&&applicationBinding==binding){
+                    applicationCatalog=local;applicationState="${app.uppercase()} r${local.getLong("revision")} · copia local, comprobando portal"
+                    if(activeMode==if(app=="turnos")3 else 4)drawLiveBoard()
+                }
+            }
+            try{
+                val received=SignageApi(portal,secret).applicationConfig(app)
+                val old=value?.getLong("revision")
+                value=store.accept(received)
+                state="${app.uppercase()} r${value.getLong("revision")} · guardada en dispositivo"
+                if(old!=value.getLong("revision")){
+                    logs.record("info","application_config_received","$app r${value.getLong("revision")}")
+                    logs.record("info","application_config_applied","$app r${value.getLong("revision")}","Catálogo validado y persistido; eventos de operación independientes")
+                }
+            }catch(e:Exception){
+                failure=e
+                if(e is PortalHttpException&&e.status in listOf(401,403,422)){store.revoke();value=null;state="Configuración central: asignación no disponible (HTTP ${e.status})"}
+                else if(value!=null)state="${app.uppercase()} r${value.getLong("revision")} · copia local, consulta fallida"
+            }
+            val result=value;val status=state
+            ui.post{
+                applicationPollBusy=false
+                if(isFinishing||isDestroyed||token.load()!=secret||settings.portalUrl!=portal||applicationBinding!=binding)return@post
+                applicationCatalog=result;applicationState=status
+                failure?.let{logs.record("warn","application_config_unavailable",app,it.javaClass.simpleName)}
+                if(activeMode==if(app=="turnos")3 else 4)drawLiveBoard()
+            }
+        }
+    }
     private var mode3Header:TextView?=null
+    private var lanBoard:SportsBoardView?=null
+    private var liveAdCycleStartedAt=0L
+    private var lastBlockedMode=""
+    private var lastRenderSettings=""
     private var lastSmartApp=""
     private var lastSmartHeaderPct=0
     private var lastCallSequence=-1L
@@ -78,13 +146,14 @@ class MainActivity : Activity() {
         if(!::settings.isInitialized)return
         debugHud.update(settings.debugHudEnabled,
             DeviceDebug.snapshot(this,settings,activeMode,lastSync,lastError,
-                "Medios: "+(if(::cache.isInitialized)cache.countMedia() else 0)))
+                "Medios: "+(if(::cache.isInitialized)cache.countMedia() else 0)+
+                    (if(activeMode in 3..4)"\n$applicationState" else "")))
     }
     private val tick=object:Runnable{override fun run(){
         try{pulse()}catch(e:Throwable){
             try{logs.record("error","tick",e.javaClass.simpleName,e.message?:"")}catch(_:Throwable){}
             showRecoveryError("Error del reproductor: ${e.message}")
-        }finally{ui.postDelayed(this,5000)}
+        }finally{ui.postDelayed(this,1000)}
     }}
     override fun onCreate(savedInstanceState:Bundle?){super.onCreate(savedInstanceState)
         window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
@@ -107,9 +176,10 @@ class MainActivity : Activity() {
         reloadFromDisk()
         if(settings.splash){
             startingSplash=true
-            val splash=FrameLayout(this).apply{setBackgroundColor(ScreenStyles.BACKGROUND)}
-            val brand=ScreenStyles.label(this,"2Cam Digital Signage",36f).apply{gravity=Gravity.CENTER;textAlignment=View.TEXT_ALIGNMENT_CENTER}
+            val splash=FrameLayout(this).apply{setBackgroundColor(android.graphics.Color.WHITE)}
+            val brand=android.widget.ImageView(this).apply{setImageResource(R.drawable.brand_logo);scaleType=android.widget.ImageView.ScaleType.FIT_CENTER;contentDescription="2Cam Signage";setPadding(50,30,50,60)}
             splash.addView(brand,FrameLayout.LayoutParams(-1,-1))
+            splash.addView(ScreenStyles.label(this,DeviceNetwork.label(),18f).apply{setTextColor(android.graphics.Color.rgb(23,69,137));gravity=Gravity.CENTER},FrameLayout.LayoutParams(-1,-2,Gravity.BOTTOM))
             setContentView(splash)
             ui.postDelayed({startingSplash=false; if(token.load()==null)showPairing() else {showMode();sync();checkAppUpdates()}; ui.post(tick)},900)
         }else{
@@ -117,7 +187,7 @@ class MainActivity : Activity() {
             ui.postDelayed(tick,1000)
         }
     }
-    override fun onDestroy(){ui.removeCallbacks(tick);debugHud.clear();deck?.clear();worker.shutdownNow();super.onDestroy()}
+    override fun onDestroy(){ui.removeCallbacks(tick);debugHud.clear();deck?.clear();applicationWorker.shutdownNow();worker.shutdownNow();super.onDestroy()}
     override fun onResume(){super.onResume();refreshDebugHud();if(::settings.isInitialized && !recoveryMode && !settings.diagnosticMode && !startingSplash && token.load()!=null){lastSync=0L;sync();}}
 
     private var shortcutKey=0
@@ -131,7 +201,7 @@ class MainActivity : Activity() {
      */
     override fun dispatchKeyEvent(event:KeyEvent):Boolean {
         if(event.action==KeyEvent.ACTION_DOWN && event.repeatCount==0 &&
-            activeMode in 1..3 &&
+            activeMode in 1..4 &&
             (event.keyCode==KeyEvent.KEYCODE_DPAD_UP || event.keyCode==KeyEvent.KEYCODE_DPAD_DOWN)){
             val now=android.os.SystemClock.uptimeMillis()
             shortcutCount=if(shortcutKey==event.keyCode && now-shortcutLastAt<=2500L)
@@ -165,7 +235,7 @@ class MainActivity : Activity() {
         return super.onKeyDown(keyCode,event)
     }
     override fun onKeyLongPress(keyCode:Int,event:KeyEvent?):Boolean {
-        if(keyCode==KeyEvent.KEYCODE_DPAD_CENTER && activeMode in 1..3){
+        if(keyCode==KeyEvent.KEYCODE_DPAD_CENTER && activeMode in 1..4){
             openSettings();return true
         }
         return super.onKeyLongPress(keyCode,event)
@@ -197,6 +267,7 @@ class MainActivity : Activity() {
         else {
             val box=ScreenStyles.column(this)
             box.addView(ScreenStyles.label(this,"Sincronizando...",25f))
+            box.addView(ScreenStyles.label(this,DeviceNetwork.label(),18f))
             box.addView(ScreenStyles.button(this,"Configuración") {openSettings()})
             box.addView(ScreenStyles.button(this,"Diagnóstico") {openDiagnostics()})
             setContentView(box)
@@ -206,6 +277,7 @@ class MainActivity : Activity() {
     private fun showPairing(){activeMode=-1;stopOverlay();deck?.clear();deck=null
         val box=ScreenStyles.column(this)
         box.addView(ScreenStyles.label(this,"DIGITAL SIGNAGE TV",32f))
+        box.addView(ScreenStyles.label(this,DeviceNetwork.label(),20f))
         box.addView(ScreenStyles.label(this,"Vincula el dispositivo desde Pantallas → Generar código",19f))
         val code=EditText(this).apply{hint="Código de 6 dígitos";inputType=2;isSingleLine=true;setTextColor(0xFF151515.toInt());setBackgroundColor(0xFFFFFFFF.toInt());setSingleLine(true)}
         box.addView(code)
@@ -230,14 +302,36 @@ class MainActivity : Activity() {
         setContentView(box)
     }
     private fun showMode(){
+        if(serviceGate.suspended){
+            if(!serviceScreen){stopOverlay();deck?.clear();deck=null;stage=null;activeMode=0;entries=JSONArray()
+                val box=ScreenStyles.column(this);box.addView(ScreenStyles.label(this,"Servicio suspendido",30f));box.addView(ScreenStyles.label(this,serviceGate.reason.ifBlank{"Contacta al administrador"},20f));box.addView(ScreenStyles.button(this,"Configuración local (PIN)"){openSettings()});setContentView(box);serviceScreen=true
+                logs.record("info","service_suspended","Servicio suspendido por el administrador")}
+            return
+        }
+        if(serviceScreen){serviceScreen=false;activeMode=-1;lastSync=0L;logs.record("info","service_resumed","Servicio reactivado")}
         val model=manifest
         if(model==null){showConnecting();return}
         val mode=model.activeMode(settings)
-        if(mode==activeMode && stage!=null && (mode!=3 ||
-           (lastSmartApp==settings.smartApp && lastSmartHeaderPct==settings.smartHeaderPct)))return
-        if(mode==3){lastSmartApp=settings.smartApp;lastSmartHeaderPct=settings.smartHeaderPct}
-        activeMode=mode;playlistIdentity="";deck?.clear();deck=null;stage=null;mode3Header=null
-        when(mode){1->showSignage(false);2->showOverlayControl();3->showSignage(true);else->showDisabled()}
+        val modeError=ModeReadiness.error(settings.publicSnapshot(),model,mode,true)
+        if(modeError!=null){
+            if(lastBlockedMode!=modeError){
+                stopOverlay();deck?.clear();deck=null;stage=null;activeMode=0
+                val box=ScreenStyles.column(this)
+                box.addView(ScreenStyles.label(this,"Modo pendiente de configuración",25f))
+                box.addView(ScreenStyles.label(this,modeError,18f))
+                box.addView(ScreenStyles.button(this,"Configurar playlist / modo"){openSettings()})
+                box.addView(ScreenStyles.button(this,"Sincronizar catálogo"){sync()})
+                setContentView(box);lastBlockedMode=modeError
+                DeviceDebug.record(this,logs,"blocked",settings.remoteRevision,modeError)
+            }
+            return
+        }
+        lastBlockedMode=""
+        val renderSettings=settings.publicSnapshot().toString()
+        if(mode==activeMode && lastRenderSettings==renderSettings && (stage!=null || mode==2))return
+        lastRenderSettings=renderSettings;liveAdCycleStartedAt=System.currentTimeMillis()
+        activeMode=mode;playlistIdentity="";deck?.clear();deck=null;stage=null;mode3Header=null;lanBoard=null
+        when(mode){1->showSignage(false);2->showOverlayControl();3,4->showSignage(true);else->showDisabled()}
         if(mode!=lastSelectedMode){
             DeviceDebug.record(this,logs,"started",settings.remoteRevision,
                 "Solicitado modo "+DeviceDebug.mode(mode))
@@ -265,16 +359,17 @@ class MainActivity : Activity() {
     }
     private fun showSignage(smart:Boolean){stopOverlay()
         requestedOrientation=if(manifest?.json?.optString("orientation")=="portrait")ActivityInfo.SCREEN_ORIENTATION_PORTRAIT else ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
-        val root=FrameLayout(this).apply{setBackgroundColor(ScreenStyles.BACKGROUND)}
-        if(smart){
-            val label=ScreenStyles.label(this,"Cargando pantalla inteligente…",32f).apply{gravity=Gravity.CENTER;textAlignment=View.TEXT_ALIGNMENT_CENTER;setBackgroundColor(0xFF152845.toInt())}
-            mode3Header=label
-            root.addView(label,FrameLayout.LayoutParams(-1,0).apply{height=(resources.displayMetrics.heightPixels*settings.smartHeaderPct/100f).toInt();gravity=Gravity.TOP})
-        }
+        val layout=if(smart)settings.modeLayout(activeMode) else "fullscreen"
         val media=FrameLayout(this).apply{setBackgroundColor(0xFF020609.toInt())}
-        val params=if(smart)FrameLayout.LayoutParams(-1,0).apply{height=(resources.displayMetrics.heightPixels*(100-settings.smartHeaderPct)/100f).toInt();gravity=Gravity.BOTTOM} else FrameLayout.LayoutParams(-1,-1)
-        root.addView(media,params);stage=media;deck=MediaDeck(media,cache,if(smart)false else settings.videoAudio)
-        val hud=ScreenStyles.label(this,"Digital Signage",13f).apply{setBackgroundColor(0x990A1424.toInt());gravity=Gravity.END}
+        val root:FrameLayout=if(smart){
+            val label=ScreenStyles.label(this,"Esperando aplicación…",26f).apply{gravity=Gravity.CENTER;setBackgroundColor(0xFF152845.toInt())}
+            mode3Header=label
+            val board:View=if(activeMode==4&&settings.settingString("scoreboard_source")=="lan")SportsBoardView(this).also{lanBoard=it} else label
+            RegionLayout(this,layout,settings.mediaFormatPercent(layout),board,media)
+        }else FrameLayout(this).apply{addView(media,FrameLayout.LayoutParams(-1,-1))}
+        root.setBackgroundColor(ScreenStyles.BACKGROUND)
+        stage=media;deck=MediaDeck(media,cache,if(smart)false else settings.videoAudio,smart)
+        val hud=ScreenStyles.label(this,"Digital Signage · "+DeviceNetwork.label(),15f).apply{setBackgroundColor(0x990A1424.toInt());gravity=Gravity.END}
         status=hud
         if(settings.signageShowHud && settings.signageHudSeconds>0){
             root.addView(hud,FrameLayout.LayoutParams(-1,-2,Gravity.TOP))
@@ -285,28 +380,41 @@ class MainActivity : Activity() {
         selectPlaylist()
     }
     private fun drawLiveBoard(){
-        val m=lastLive;val type=settings.smartApp;val d=m.optJSONObject("payload")?:JSONObject()
+        val expectedApp=if(activeMode==4)"sports" else "turnos"
+        val currentBinding=settings.portalUrl+"\n"+(token.load()?:"")+"\n"+expectedApp
+        val catalog=applicationCatalog?.takeIf{applicationBinding==currentBinding&&it.optString("application")==expectedApp}
+        val scope=catalog?.let{ApplicationCatalog.scopeLabel(it)}?:""
+        if(activeMode==4 && settings.settingString("scoreboard_source")=="lan"){
+            SportsRuntime.start(this)
+            lanBoard?.scopeLabel=scope
+            lanBoard?.update(SportsRuntime.host(this).displaySnapshot(),SportsRuntime.board(this))
+            if(SportsRuntime.error.isBlank() && (DeviceDebug.effective(this)!=settings.remoteRevision || DeviceDebug.effectiveMode(this)!=4))
+                DeviceDebug.record(this,logs,"effective",settings.remoteRevision,"Sports directo LAN mostrado",4)
+            return
+        }
+        val m=lastLive;val type=if(activeMode==4)"scoreboard" else "queue";val d=m.optJSONObject("payload")?:JSONObject()
         if(m.optString("widget_type",type)!=type){
-            mode3Header?.text=if(type=="queue")"SALA DE ESPERA\nEsperando turnos desde el portal"
+            mode3Header?.text=(if(scope.isBlank())"" else "$scope\n")+if(type=="queue")"SALA DE ESPERA\nEsperando turnos desde el portal"
                 else "MARCADOR\nEsperando puntos desde el portal"
             return
         }
-        mode3Header?.text=if(type=="scoreboard"){
+        mode3Header?.text=(if(scope.isBlank())"" else "$scope\n")+if(type=="scoreboard"){
             "${d.optString("competition","PARTIDO")}\n${d.optString("home","LOCAL")}    ${d.optString("home_score","0")} : ${d.optString("away_score","0")}    ${d.optString("away","VISITANTE")}\n${d.optString("period","")}   ${d.optString("clock","")}".trim()
         }else{
             "${d.optString("title","SALA DE ESPERA")}\nTURNO  ${d.optString("ticket","--")}\nPUESTO ${d.optString("counter","--")}\n${d.optString("message","")}".trim()
         }
-        if(activeMode==3 && (DeviceDebug.effective(this)!=settings.remoteRevision ||
-            DeviceDebug.effectiveMode(this)!=3)){
+        if(activeMode in 3..4 && (DeviceDebug.effective(this)!=settings.remoteRevision ||
+            DeviceDebug.effectiveMode(this)!=activeMode)){
             DeviceDebug.record(this,logs,"effective",settings.remoteRevision,
-                "Panel inteligente ${settings.smartApp} mostrado",3)
+                "Panel ${DeviceDebug.mode(activeMode)} mostrado",activeMode)
         }
     }
     private fun showOverlayControl(){
         val box=ScreenStyles.column(this)
+        box.addView(ScreenStyles.label(this,DeviceNetwork.label(),18f))
         box.addView(ScreenStyles.label(this,"Modo Overlay programado",30f))
         val available=AndroidCompat.canOverlay(this)
-        box.addView(ScreenStyles.label(this,if(available)"Overlay autorizado. Pulsa Inicio del control remoto para abrir otra app." else "Debes autorizar Mostrar sobre otras aplicaciones para usar Overlay."))
+        box.addView(ScreenStyles.label(this,if(available)"Overlay activo en segundo plano. Puedes elegir tu aplicación de video desde Inicio. Con Inicio automático activado, no necesitas abrir Digital Signage después de reiniciar el dispositivo." else "Debes autorizar Mostrar sobre otras aplicaciones para usar Overlay."))
         if(!available)box.addView(ScreenStyles.button(this,"Autorizar overlay"){
             if (android.os.Build.VERSION.SDK_INT >= 23) {
                 try { startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION,android.net.Uri.parse("package:$packageName"))) }
@@ -330,14 +438,15 @@ class MainActivity : Activity() {
 
         // The old fingerprint ignored transition, zoom, layout and item order.
         // The full selected playlist also detects visual-only changes.
-        val list=model.entries()
-        val fingerprint="${model.activeMode(settings)}:${model.json.optString("orientation")}:${list.toString()}"
+        val list=model.entries(settings,activeMode)
+        val fingerprint="${model.activeMode(settings)}:${settings.publicSnapshot()}:${model.json.optString("orientation")}:${list.toString()}"
         if(fingerprint==playlistIdentity)return
         playlistIdentity=fingerprint;entries=list;index=0;deck?.clear()
-        if(entries.length()>0)advance() else status?.apply{visibility=View.VISIBLE;text="Sin contenido. Asigna una lista en el portal."}
+        stage?.visibility=if(activeMode in 3..4 && settings.modeLayout(activeMode)=="fullscreen")View.GONE else View.VISIBLE
+        if(entries.length()>0)advance() else status?.apply{visibility=View.VISIBLE;text="${DeviceDebug.mode(activeMode)} · Sin playlist compatible para ${settings.modeLayout(activeMode)}"}
     }
     private fun advance(){
-        if(activeMode!=1&&activeMode!=3)return
+        if(activeMode !in listOf(1,3,4))return
         if(entries.length()==0)return
         val item=entries.optJSONObject(index%entries.length())?:return
         index=(index+1)%entries.length()
@@ -345,8 +454,8 @@ class MainActivity : Activity() {
             lastError=message;logs.record("error","media",message)
             status?.apply{visibility=View.VISIBLE;text=message};ui.postDelayed({advance()},2500)
         },{
-            if(DeviceDebug.effective(this)!=settings.remoteRevision ||
-                DeviceDebug.effectiveMode(this)!=activeMode){
+            if(stage?.visibility==View.VISIBLE && (DeviceDebug.effective(this)!=settings.remoteRevision ||
+                DeviceDebug.effectiveMode(this)!=activeMode)){
                 DeviceDebug.record(this,logs,"effective",settings.remoteRevision,
                     "Medio renderizado en "+DeviceDebug.mode(activeMode),activeMode)
             }
@@ -356,7 +465,17 @@ class MainActivity : Activity() {
             ui.postDelayed({advance()},2500)
         }
     }
+    private fun refreshLiveAdvertising(){
+        if(activeMode !in 3..4 || settings.modeLayout(activeMode)!="fullscreen")return
+        val prefix=if(activeMode==4)"scoreboard" else "queue"
+        val interval=settings.settingInt(prefix+"_ad_interval_sec")*1000L
+        val duration=settings.settingInt(prefix+"_ad_duration_sec")*1000L
+        val elapsed=System.currentTimeMillis()-liveAdCycleStartedAt
+        stage?.visibility=if(entries.length()>0 && elapsed%(interval+duration)>=interval)View.VISIBLE else View.GONE
+    }
     private fun pulse(){
+        pollService()
+        refreshLiveAdvertising()
         refreshDebugHud()
         pollDebugConfig()
         if(settings.diagnosticMode)return
@@ -364,7 +483,7 @@ class MainActivity : Activity() {
         val model=manifest
         if(model!=null){
             val nextMode=model.activeMode(settings)
-            if(nextMode!=activeMode)showMode() else if(activeMode==1||activeMode==3)selectPlaylist()
+            showMode();if(activeMode in listOf(1,3,4))selectPlaylist()
         }
 
         // During an active test, query for changed playlist definitions every ~15s.
@@ -373,12 +492,16 @@ class MainActivity : Activity() {
         if(System.currentTimeMillis()-lastSync>=refreshMs)sync()
         if(System.currentTimeMillis()-lastControlPoll>=15000L)checkRemoteSync()
         checkAppUpdates()
-        if(activeMode==3&&System.currentTimeMillis()-lastLivePoll>settings.smartPollSec*1000L)pollLive()
+        if(activeMode in 3..4){
+            pollApplicationConfig()
+            if(activeMode==4 && settings.settingString("scoreboard_source")=="lan")drawLiveBoard()
+            else if(System.currentTimeMillis()-lastLivePoll>settings.smartPollSec*1000L)pollLive()
+        }
     }
     private fun pollLive(){val secret=token.load()?:return;lastLivePoll=System.currentTimeMillis()
         worker.execute{try{val live=SignageApi(settings.portalUrl,secret).live().optJSONObject("live")?:return@execute
             ui.post{
-                if(settings.smartSound && settings.smartApp=="queue" && live.optString("widget_type")=="queue"){
+                if(settings.smartSound && activeMode==3 && live.optString("widget_type")=="queue"){
                     val seq=live.optJSONObject("payload")?.optLong("call_sequence",0L)?:0L
                     if(lastCallSequence>=0 && seq>lastCallSequence){
                         try{
@@ -389,6 +512,7 @@ class MainActivity : Activity() {
                     }
                     lastCallSequence=seq
                 }
+                if(token.load()!=secret)return@post
                 lastLive=live;drawLiveBoard()
             }}catch(_:Exception){}}
     }
@@ -404,10 +528,10 @@ class MainActivity : Activity() {
     }
 
     private fun playbackManifestKey(obj:JSONObject):String {
-        val fields=listOf("orientation","timezone","schedules","fallback","mode_blocks","device_options")
+        val fields=listOf("media_formats","orientation","timezone","schedules","fallback","mode_blocks","device_options","playlist_catalog")
         return fields.joinToString("|"){key->obj.opt(key)?.toString()?:""}
     }
-    private fun sync(){val secret=token.load()?:return;if(syncInFlight)return;syncInFlight=true;lastSync=System.currentTimeMillis()
+    private fun sync(){val secret=token.load()?:return;if(syncInFlight)return;syncInFlight=true;lastSync=System.currentTimeMillis();lastApplicationPoll=0L
         logs.record("info","sync","Inicio de sincronización")
         worker.execute{
             try{
@@ -456,8 +580,8 @@ class MainActivity : Activity() {
                     }catch(e:Exception){logs.record("warn","sync_ack",e.javaClass.simpleName,e.message?:"")}
                 }
                 val model=ManifestModel(obj)
-                ui.post{manifest=model;lastLive=model.widget();syncInFlight=false;showMode();selectPlaylist();drawLiveBoard();status?.postDelayed({status?.visibility=View.GONE},3500)}
-                api.heartbeat(JSONObject().put("app_version","0.4.12-debug").put("active_mode",model.activeMode(settings))
+                ui.post{manifest=model;lastLive=model.widget();syncInFlight=false;showMode();selectPlaylist();drawLiveBoard();status?.postDelayed({if(entries.length()>0)status?.visibility=View.GONE},3500)}
+                api.heartbeat(JSONObject().put("app_version",BuildConfig.VERSION_NAME).put("active_mode",model.activeMode(settings))
                  .put("cached_media",cache.countMedia()).put("free_storage_bytes",cache.freeBytes()).put("last_error",lastError.take(200)))
             }catch(e:Exception){lastError=e.message?:"Error de sincronización"
                 logs.record("error","sync",e.javaClass.simpleName,lastError)
@@ -473,3 +597,4 @@ class MainActivity : Activity() {
         setContentView(box)
     }
 }
+

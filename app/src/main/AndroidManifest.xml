@@ -16,13 +16,14 @@
        <provider android:name=".ApkProvider" android:authorities="com.digitalsignage.tv.apkfile" android:exported="false" android:grantUriPermissions="true" />
        <activity android:name=".DiagnosticsActivity" android:exported="false" />
        <activity android:name=".SettingsActivity" android:exported="false" />
+       <activity android:name=".PlaylistPreviewActivity" android:exported="false" />
        <activity android:name=".SportsActivity" android:exported="false" android:configChanges="orientation|screenSize" />
        <activity android:name=".DiagnosticHomeActivity" android:exported="false" />
        <activity android:name=".MainActivity" android:exported="true" android:configChanges="orientation|screenSize">
            <intent-filter><action android:name="android.intent.action.MAIN" /><category android:name="android.intent.category.LAUNCHER" /><category android:name="android.intent.category.LEANBACK_LAUNCHER" /></intent-filter>
        </activity>
        <receiver android:name=".BootReceiver" android:exported="false" android:enabled="true">
-           <intent-filter><action android:name="android.intent.action.BOOT_COMPLETED" /></intent-filter>
+           <intent-filter><action android:name="android.intent.action.BOOT_COMPLETED" /><action android:name="android.intent.action.MY_PACKAGE_REPLACED" /></intent-filter>
        </receiver>
        <service android:name=".LocalAdminService" android:exported="false" android:foregroundServiceType="dataSync" />
        <service android:name=".OverlayService" android:exported="false" android:foregroundServiceType="specialUse">
@@ -30,3 +31,4 @@
        </service>
     </application>
 </manifest>
+
