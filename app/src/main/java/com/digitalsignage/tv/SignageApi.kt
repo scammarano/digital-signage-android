@@ -13,6 +13,8 @@ class SignageApi(private val baseUrl:String, private val token:String?) {
         return call("api-device.php?op=pair",JSONObject().put("code",code))
     }
     fun manifest()=call("api-device.php?op=manifest")
+    fun service()=call("api-device.php?op=service").getJSONObject("service")
+    fun reportService(data:JSONObject)=call("api-device.php?op=service",data)
     fun live()=call("api-device.php?op=live")
     fun latestUpdate(channel:String,sdk:Int):JSONObject {
         require(channel in listOf("stable","beta","debug"))
@@ -59,3 +61,4 @@ class SignageApi(private val baseUrl:String, private val token:String?) {
         return conn
     }
 }
+

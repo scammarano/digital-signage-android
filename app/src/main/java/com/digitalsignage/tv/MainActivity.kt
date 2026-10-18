@@ -45,6 +45,22 @@ class MainActivity : Activity() {
     private var lastError=""
     private lateinit var logs:DeviceLogs
     private var lastControlPoll=0L
+    private val serviceGate by lazy{ServiceGate(this)}
+    private var serviceScreen=false
+    private var servicePollAt=0L
+    @Volatile private var servicePollBusy=false
+    private fun pollService(){
+        val secret=token.load()?:return
+        val now=System.currentTimeMillis();if(servicePollBusy||now-servicePollAt<15000L)return
+        servicePollAt=now;servicePollBusy=true
+        worker.execute{try{
+            val api=SignageApi(settings.portalUrl,secret);val state=api.service()
+            if(token.load()==secret){serviceGate.accept(state);ui.post{
+                showMode()
+                ui.postDelayed({if(!isFinishing&&token.load()==secret&&(!serviceGate.suspended||!OverlayService.visible))worker.execute{try{api.reportService(serviceGate.confirmation())}catch(_:Exception){}}},200L)
+            }}
+        }catch(_:Exception){}finally{servicePollBusy=false}}
+    }
     private var lastDebugConfigPoll=0L
     private fun pollDebugConfig() {
         if(!settings.debugHudEnabled || token.load()==null)return
@@ -233,6 +249,13 @@ class MainActivity : Activity() {
         setContentView(box)
     }
     private fun showMode(){
+        if(serviceGate.suspended){
+            if(!serviceScreen){stopOverlay();deck?.clear();deck=null;stage=null;activeMode=0;entries=JSONArray()
+                val box=ScreenStyles.column(this);box.addView(ScreenStyles.label(this,"Servicio suspendido",30f));box.addView(ScreenStyles.label(this,serviceGate.reason.ifBlank{"Contacta al administrador"},20f));box.addView(ScreenStyles.button(this,"Configuración local (PIN)"){openSettings()});setContentView(box);serviceScreen=true
+                logs.record("info","service_suspended","Servicio suspendido por el administrador")}
+            return
+        }
+        if(serviceScreen){serviceScreen=false;activeMode=-1;lastSync=0L;logs.record("info","service_resumed","Servicio reactivado")}
         val model=manifest
         if(model==null){showConnecting();return}
         val mode=model.activeMode(settings)
@@ -398,6 +421,7 @@ class MainActivity : Activity() {
         stage?.visibility=if(entries.length()>0 && elapsed%(interval+duration)>=interval)View.VISIBLE else View.GONE
     }
     private fun pulse(){
+        pollService()
         refreshLiveAdvertising()
         refreshDebugHud()
         pollDebugConfig()

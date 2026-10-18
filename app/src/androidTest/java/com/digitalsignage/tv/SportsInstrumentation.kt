@@ -33,6 +33,7 @@ class SportsInstrumentation:Instrumentation(){
         val old=formatSettings.publicSnapshot().put("overlay_width_pct",77).put("queue_height_pct",66)
         check(!formatSettings.validateSettings(old).has("overlay_width_pct"))
         var rejected=false;try{MediaFormats.validate(JSONObject().put("revision",1).put("side_width_pct",101).put("bottom_height_pct",20))}catch(_:IllegalArgumentException){rejected=true};check(rejected)
+        exerciseServiceGate()
         exerciseMediaTiming()
         exercisePin()
         exerciseOverlay()
@@ -73,6 +74,19 @@ class SportsInstrumentation:Instrumentation(){
         check(host.controls().length()==3);try{host.openPairing("home");error("Aceptó cuarto control")}catch(e:LocalSportsHost.Failure){check(e.status==409)}
         host.revoke(pair.getString("controlId"));check(host.controls().length()==2)
         runOnMainSync{activity.finish()}
+    }
+    private fun exerciseServiceGate(){
+        val prefs=targetContext.getSharedPreferences("signage_service_policy_v1",0);val old=prefs.all.toMap();prefs.edit().clear().commit()
+        try{
+            val gate=ServiceGate(targetContext);check(!gate.suspended)
+            gate.accept(JSONObject().put("revision",2).put("suspended",true).put("reason","Prueba de suspensión"))
+            check(gate.suspended && ServiceGate(targetContext).suspended){"Suspension did not survive a new instance"}
+            gate.accept(JSONObject().put("revision",1).put("suspended",false));check(gate.suspended){"Old response resumed service"}
+            try{gate.accept(JSONObject().put("revision",2).put("suspended",false));error("Conflicting service revision accepted")}catch(_:IllegalArgumentException){}
+            val settings=SettingsStore(targetContext);val config=settings.publicSnapshot();check(settings.applySnapshot(config));check(gate.suspended){"Local settings bypassed suspension"}
+            gate.accept(JSONObject().put("revision",3).put("suspended",false));check(!gate.suspended && gate.confirmation().getLong("revision")==3L)
+            println("SERVICE_POLICY_PASS persistent suspension, stale rejection, no local override, resume")
+        }finally{val e=prefs.edit().clear();for((k,v) in old)when(v){is String->e.putString(k,v);is Long->e.putLong(k,v);is Boolean->e.putBoolean(k,v)};e.commit()}
     }
     private fun exerciseMediaTiming(){
         check(MediaTiming.durationMs(JSONObject().put("duration",0.1))==100L)
@@ -151,6 +165,12 @@ class SportsInstrumentation:Instrumentation(){
             active.parentFile?.mkdirs();active.writeText(manifest.toString())
             settings.applySnapshot(JSONObject(config.toString()).put("primary_mode",1));settings.manualMode=0
             val before=OverlayService.lastShownAt
+            val gate=ServiceGate(targetContext)
+            gate.accept(JSONObject().put("revision",10).put("suspended",true))
+            runOnMainSync{AndroidCompat.startServiceCompat(targetContext,Intent(targetContext,OverlayService::class.java).setAction(OverlayService.ACTION_PREVIEW))}
+            Thread.sleep(1200)
+            check(!OverlayService.visible && OverlayService.lastShownAt==before){"Suspended Overlay became visible"}
+            gate.accept(JSONObject().put("revision",11).put("suspended",false))
             runOnMainSync{AndroidCompat.startServiceCompat(targetContext,Intent(targetContext,OverlayService::class.java).setAction(OverlayService.ACTION_PREVIEW))}
             for(i in 0 until 60){if(OverlayService.lastShownAt>before)break;Thread.sleep(100)}
             check(OverlayService.lastShownAt>before){"Overlay window was not attached"}
@@ -160,11 +180,13 @@ class SportsInstrumentation:Instrumentation(){
             println("FRACTIONAL_OVERLAY_PASS actual_window_ms=$visibleMs")
             check(settings.primaryMode==1 && settings.manualMode==0){"Preview changed saved mode"}
             println("OVERLAY_WINDOW_PASS BOOT_BACKGROUND_POLICY_PASS MODE_PLAYLIST_GATE_PASS")
+            println("SERVICE_OVERLAY_PASS suspended window blocked, resume displayed")
         }finally{
             runOnMainSync{targetContext.stopService(Intent(targetContext,OverlayService::class.java))}
             check(settings.applySnapshot(original));settings.manualMode=manual
             if(originalManifest!=null)active.writeBytes(originalManifest)else active.delete()
             file.delete()
+            targetContext.getSharedPreferences("signage_service_policy_v1",0).edit().clear().commit()
         }
     }
 }

@@ -29,12 +29,27 @@ class OverlayService:Service(){
         const val ACTION_PREVIEW="com.digitalsignage.tv.PREVIEW_OVERLAY"
         @Volatile var lastShownAt=0L;private set
         @Volatile var lastHiddenAt=0L;private set
+        @Volatile var visible=false;private set
     }
     private val handler=Handler(Looper.getMainLooper());private val worker=Executors.newSingleThreadExecutor()
     private lateinit var settings:SettingsStore;private lateinit var cache:CacheManager
     private var wm:WindowManager?=null;private var current:View?=null;private var nextAdAt=0L;private var hideAt=0L
     private var previewUntil=0L
     private var dismiss:Runnable?=null
+    private val serviceGate by lazy{ServiceGate(this)}
+    private var servicePollAt=0L
+    @Volatile private var servicePollBusy=false
+    private fun pollService(){
+        val secret=SecureToken(this).load()?:return
+        val now=System.currentTimeMillis();if(servicePollBusy||now-servicePollAt<15000L)return
+        servicePollAt=now;servicePollBusy=true
+        worker.execute{try{val api=SignageApi(settings.portalUrl,secret);val state=api.service()
+            if(SecureToken(this).load()==secret){serviceGate.accept(state);handler.post{
+                if(serviceGate.suspended)hide()
+                if(!serviceGate.suspended||!visible)worker.execute{try{api.reportService(serviceGate.confirmation())}catch(_:Exception){}}
+            }}
+        }catch(_:Exception){}finally{servicePollBusy=false}}
+    }
     private var lastFetch=0L;private var index=0;private var syncing=false
     private var lastDebugConfigPoll=0L
     private var debugText:TextView?=null
@@ -96,6 +111,8 @@ class OverlayService:Service(){
         debugText=null
         worker.shutdownNow();super.onDestroy()}
     private fun pulse(){
+        pollService()
+        if(serviceGate.suspended){hide();return}
         refreshDebugOverlay()
         pollDebugConfig()
         if(!AndroidCompat.canOverlay(this)){hide();stopSelf();return}
@@ -164,7 +181,7 @@ class OverlayService:Service(){
             val manager=wm?:return
             val offset=OverlayMotion.offset(layout,w,h)
             frame.translationX=offset.first;frame.translationY=offset.second
-            manager.addView(frame,attrs);current=frame
+            manager.addView(frame,attrs);current=frame;visible=true
             frame.post{if(current===frame && frame.windowToken!=null)lastShownAt=System.currentTimeMillis()}
             frame.animate().translationX(0f).translationY(0f).alpha(1f).setDuration(minOf(600L,duration/2))
                 .setInterpolator(android.view.animation.DecelerateInterpolator()).start()
@@ -182,6 +199,7 @@ class OverlayService:Service(){
     private fun hide(animated:Boolean=false){
         dismiss?.let{handler.removeCallbacks(it)};dismiss=null
         val view=current?:return;current=null
+        visible=false
         lastHiddenAt=System.currentTimeMillis()
         val manager=wm?:return
         fun remove(){try{manager.removeView(view)}catch(_:Exception){}}
