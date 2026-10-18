@@ -80,13 +80,15 @@ jobs:
           script: |
             adb install -r app/build/outputs/apk/debug/app-debug.apk
             adb install -r app/build/outputs/apk/androidTest/debug/app-debug-androidTest.apk
+            adb shell svc wifi enable
+            adb shell ip -4 address
             adb shell settings put global install_non_market_apps 1
             adb shell settings put secure install_non_market_apps 1
             if [ "${{ matrix.api }}" -ge 26 ]; then adb shell appops set com.digitalsignage.tv REQUEST_INSTALL_PACKAGES allow; fi
             if [ "${{ matrix.api }}" -ge 23 ]; then adb shell appops set com.digitalsignage.tv SYSTEM_ALERT_WINDOW allow; fi
             adb shell am instrument -w com.digitalsignage.tv.test/com.digitalsignage.tv.SportsInstrumentation | tee /tmp/fire-sports-test.txt
-            grep -q SPORTS_FIRE_DIRECT_PASS /tmp/fire-sports-test.txt
             adb exec-out run-as com.digitalsignage.tv cat files/sports-region.png > /tmp/fire-sports-region.png
+            grep -q SPORTS_FIRE_DIRECT_PASS /tmp/fire-sports-test.txt
       - uses: actions/upload-artifact@v4
         if: always()
         with:

@@ -78,7 +78,10 @@ class SportsInstrumentation:Instrumentation(){
         } finally {check(settings.applySnapshot(savedSettings));settings.manualMode=0}
         val activity=startActivitySync(Intent(targetContext,SportsActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) as SportsActivity
         val host=SportsRuntime.host(targetContext);host.configure("Fire de prueba","Pista API22","Verde","Azul",RacketRules.standard("padel",3,"star",6,false),0)
-        check(SportsRuntime.address.startsWith("http://")){SportsRuntime.error}
+        for(i in 0 until 30){if(SportsRuntime.address.startsWith("http://"))break;Thread.sleep(100);runOnMainSync{SportsRuntime.start(targetContext)}}
+        check(SportsRuntime.address.startsWith("http://")){
+            SportsRuntime.error+"; interfaces="+java.net.NetworkInterface.getNetworkInterfaces().toList().joinToString{n->n.name+":"+n.inetAddresses.toList().joinToString{it.hostAddress?:"?"}}
+        }
         val path="/screens/${host.screenId()}";val code=host.openPairing("official").getString("code")
         val pair=api("POST","$path/pair",body=JSONObject().put("name","Control Android prueba").put("code",code));val token=pair.getString("controlToken")
         val accepted=api("POST","$path/commands",token,JSONObject().put("type","point").put("side",0).put("expectedVersion",1),"fire-point-0001")
