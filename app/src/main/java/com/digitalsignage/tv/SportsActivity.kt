@@ -15,29 +15,37 @@ import services.twocam.sportscore.RacketRules
 /** Pantalla Sports directa: configuración física y render, sin reglas dentro del reproductor. */
 class SportsActivity:Activity(){
     private val ui=Handler(Looper.getMainLooper())
-    private lateinit var board:TextView
+    private lateinit var board:SportsBoardView
     private lateinit var info:TextView
     private var deck:MediaDeck?=null
     private var playing=false
     private val refresh=object:Runnable{override fun run(){try{
         val host=SportsRuntime.host(this@SportsActivity);val snap=host.displaySnapshot()
-        board.text=SportsRuntime.board(this@SportsActivity)
+        board.update(snap,SportsRuntime.board(this@SportsActivity))
         info.text="${SportsRuntime.address.ifEmpty{SportsRuntime.error}} · ${host.controls().length()}/3 controles"+
             (snap.optJSONObject("pairing")?.let{"\nCÓDIGO DE ENLACE: ${it.getString("code")}"}?:"\nAbre un código para enlazar tu tablet")
     }catch(e:Exception){info.text="Sports: ${e.message}"};ui.postDelayed(this,400)}}
     override fun onCreate(savedInstanceState:Bundle?){super.onCreate(savedInstanceState);requestedOrientation=ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE;window.addFlags(WindowManager.LayoutParams.FLAG_KEEP_SCREEN_ON)
-        val root=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL;setBackgroundColor(ScreenStyles.BACKGROUND)}
-        board=ScreenStyles.label(this,"Preparando Sports…",28f).apply{tag="sports-board";gravity=Gravity.CENTER}
-        root.addView(board,LinearLayout.LayoutParams(-1,0,1f))
-        info=ScreenStyles.label(this,"",16f).apply{tag="sports-address"};root.addView(info)
+        window.decorView.systemUiVisibility=android.view.View.SYSTEM_UI_FLAG_FULLSCREEN or android.view.View.SYSTEM_UI_FLAG_HIDE_NAVIGATION or android.view.View.SYSTEM_UI_FLAG_IMMERSIVE_STICKY
+        val panel=LinearLayout(this).apply{orientation=LinearLayout.VERTICAL;setBackgroundColor(ScreenStyles.BACKGROUND)}
+        board=SportsBoardView(this).apply{tag="sports-board"}
+        panel.addView(board,LinearLayout.LayoutParams(-1,0,1f))
+        info=ScreenStyles.label(this,"",16f).apply{tag="sports-address"};panel.addView(info)
         val row=LinearLayout(this).apply{orientation=LinearLayout.HORIZONTAL}
         fun action(title:String,tag:String,doIt:()->Unit){val button=ScreenStyles.button(this,title){doIt()}.apply{this.tag=tag};row.addView(button,LinearLayout.LayoutParams(0,-2,1f))}
         action("Nuevo encuentro","sports-configure"){AlertDialog.Builder(this).setTitle("Configurar encuentro").setMessage("Se iniciará un encuentro nuevo. Los controles enlazados se conservan y el marcador anterior queda en la auditoría local.").setNegativeButton("Cancelar",null).setPositiveButton("Continuar"){_,_->configure()}.show()}
         action("Enlazar control","sports-pair"){AlertDialog.Builder(this).setTitle("Permiso del control").setItems(arrayOf("Anotador oficial","Auxiliar A","Auxiliar B")){_,which->try{SportsRuntime.host(this).openPairing(arrayOf("official","home","away")[which]);refreshNow()}catch(e:Exception){error(e)}}.show()}
         action("Controles / revocar","sports-controls"){val host=SportsRuntime.host(this);val controls=host.controls();if(controls.length()==0){Toast.makeText(this,"Sin controles enlazados",Toast.LENGTH_LONG).show()}else{val labels=Array(controls.length()){i->val c=controls.getJSONObject(i);"${c.getString("name")} · ${c.getString("role")}"};AlertDialog.Builder(this).setTitle("Selecciona para desvincular").setItems(labels){_,i->AlertDialog.Builder(this).setMessage("¿Desvincular ${controls.getJSONObject(i).getString("name")}?").setNegativeButton("Cancelar",null).setPositiveButton("Desvincular"){_,_->try{host.revoke(controls.getJSONObject(i).getString("id"));refreshNow()}catch(e:Exception){error(e)}}.show()}.show()}}
-        action("Volver","sports-back"){finish()};root.addView(row)
-        val cache=CacheManager(this,SettingsStore(this));val manifest=cache.active()?.let{ManifestModel(it)};val entries=manifest?.entries()
-        if(entries!=null&&entries.length()>0){val media=FrameLayout(this);root.addView(media,LinearLayout.LayoutParams(-1,0,.6f));deck=MediaDeck(media,cache,false);var index=0
+        action("Volver","sports-back"){finish()};panel.addView(row)
+        val settings=SettingsStore(this);val cache=CacheManager(this,settings)
+        val manifest=cache.active()?.let{ManifestModel(it)};val entries=manifest?.entries(settings,4)
+        val media=FrameLayout(this).apply{tag="sports-media";setBackgroundColor(android.graphics.Color.BLACK)}
+        val layout=settings.modeLayout(4)
+        val root=RegionLayout(this,layout,settings.mediaFormatPercent(layout),panel,media).apply{tag="sports-regions"}
+        root.addOnLayoutChangeListener{_,_,_,_,_,_,_,_,_->
+            DeviceLogs(this).record("info","display_region","Sports LAN · $layout","canvas=${root.width}x${root.height}; media=${media.width}x${media.height}; formato=${settings.mediaFormatPercent(layout)}%")
+        }
+        if(entries!=null&&entries.length()>0){deck=MediaDeck(media,cache,false,true);var index=0
             fun next(){if(!playing)return;val item=entries.optJSONObject(index++%entries.length())?:return;deck?.display(item,{next()},{ui.postDelayed({next()},2000)})}
             playing=true;media.post{next()}
         }
@@ -65,3 +73,4 @@ class SportsActivity:Activity(){
         }catch(e:Exception){error(e)}}};dialog.show()
     }
 }
+

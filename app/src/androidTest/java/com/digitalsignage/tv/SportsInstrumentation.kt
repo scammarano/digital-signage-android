@@ -37,6 +37,8 @@ class SportsInstrumentation:Instrumentation(){
         exerciseMediaTiming()
         exercisePin()
         exerciseOverlay()
+        exerciseInstaller()
+        exerciseDisplayRegions()
         val settings=SettingsStore(targetContext)
         settings.prepareProductionStartup()
         val savedSettings=settings.publicSnapshot()
@@ -67,13 +69,92 @@ class SportsInstrumentation:Instrumentation(){
         val accepted=api("POST","$path/commands",token,JSONObject().put("type","point").put("side",0).put("expectedVersion",1),"fire-point-0001")
         check(accepted.getJSONObject("match").getJSONArray("labels").getString(0)=="15")
         val repeat=api("POST","$path/commands",token,JSONObject().put("type","point").put("side",0).put("expectedVersion",1),"fire-point-0001");check(repeat.getLong("sequence")==accepted.getLong("sequence"))
-        Thread.sleep(900);var text="";runOnMainSync{text=(activity.window.decorView.findViewWithTag<android.widget.TextView>("sports-board")).text.toString()};check(text.contains("15")){"Marcador no actualizado"}
+        Thread.sleep(900);var text="";runOnMainSync{text=(activity.window.decorView.findViewWithTag<SportsBoardView>("sports-board")).summaryText};check(text.contains("15")){"Marcador no actualizado"}
         val snap=api("GET","$path/snapshot",token);check(snap.getJSONObject("match").getInt("version")==2)
         val saved=java.io.File(targetContext.filesDir,"sports-authority-v1.json").readText();val restored=LocalSportsHost(saved){_ ->};check(restored.displaySnapshot().getJSONObject("match").getJSONArray("labels").getString(0)=="15")
         for(role in listOf("home","away")){val pin=host.openPairing(role).getString("code");api("POST","$path/pair",body=JSONObject().put("name",role).put("code",pin))}
         check(host.controls().length()==3);try{host.openPairing("home");error("Aceptó cuarto control")}catch(e:LocalSportsHost.Failure){check(e.status==409)}
         host.revoke(pair.getString("controlId"));check(host.controls().length()==2)
         runOnMainSync{activity.finish()}
+    }
+    private fun exerciseInstaller(){
+        val source=java.io.File(targetContext.applicationInfo.sourceDir)
+        val dir=java.io.File(targetContext.filesDir,"apk-updates").apply{mkdirs()}
+        val cached=java.io.File(dir,"pending.apk");source.copyTo(cached,true)
+        val candidates=ApkInstaller.intents(targetContext,cached)
+        val expectedScheme=if(android.os.Build.VERSION.SDK_INT<24)"file" else "content"
+        check(candidates.all{it.data?.scheme==expectedScheme})
+        var attempts=0
+        ApkInstaller.launch(candidates){attempts++;if(attempts==1)throw android.content.ActivityNotFoundException("Fallback fixture")}
+        check(attempts==2){"Missing alternate installer action"}
+        var denied=false;try{ApkInstaller.launch(candidates){throw android.content.ActivityNotFoundException()}}catch(_:IllegalStateException){denied=true};check(denied)
+        val resolved=candidates.firstOrNull{targetContext.packageManager.resolveActivity(it,0)!=null}
+            ?:error("System installer not found for $expectedScheme")
+        val installer=targetContext.packageManager.resolveActivity(resolved,0)!!.activityInfo.packageName
+        if(expectedScheme=="file"){
+            val copy=java.io.File(resolved.data!!.path!!)
+            check(targetContext.packageManager.getPackageArchiveInfo(copy.path,0)?.packageName==targetContext.packageName){"Legacy staged APK unreadable"}
+        }else{
+            targetContext.contentResolver.openInputStream(resolved.data!!).use{check(it!=null&&it.read()==0x50)}
+        }
+        val activity=startActivitySync(Intent(targetContext,DiagnosticHomeActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+        try{
+            runOnMainSync{ApkInstaller.launch(candidates){activity.startActivity(it)}}
+            var actual="";var screen=""
+            fun text(node:android.view.accessibility.AccessibilityNodeInfo?):String {
+                if(node==null)return ""
+                val all=StringBuilder(node.text?.toString()?:"")
+                for(i in 0 until node.childCount)all.append(' ').append(text(node.getChild(i)))
+                return all.toString()
+            }
+            for(i in 0 until 60){val root=uiAutomation.rootInActiveWindow;actual=root?.packageName?.toString()?:"";screen=text(root);if(actual==installer&&screen.contains("2Cam Digital Signage"))break;Thread.sleep(100)}
+            check(actual==installer&&screen.contains("2Cam Digital Signage")){"Installer did not parse/display application: $actual / $installer; $screen"}
+            println("APK_INSTALLER_HANDOFF_PASS sdk=${android.os.Build.VERSION.SDK_INT} scheme=$expectedScheme package=$installer; no installation accepted")
+        }finally{
+            uiAutomation.performGlobalAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_BACK)
+            Thread.sleep(300);runOnMainSync{activity.finish()}
+            cached.delete()
+        }
+    }
+    private fun exerciseDisplayRegions(){
+        val settings=SettingsStore(targetContext);val old=settings.publicSnapshot()
+        val active=java.io.File(targetContext.filesDir,"signage-manifest-v1/active.json")
+        val previous=if(active.isFile)active.readBytes()else null
+        val bitmap=android.graphics.Bitmap.createBitmap(1920,216,android.graphics.Bitmap.Config.ARGB_8888).apply{eraseColor(android.graphics.Color.GREEN)}
+        val bytes=java.io.ByteArrayOutputStream().also{bitmap.compress(android.graphics.Bitmap.CompressFormat.PNG,100,it)}.toByteArray();bitmap.recycle()
+        val sha=java.security.MessageDigest.getInstance("SHA-256").digest(bytes).joinToString(""){"%02x".format(it.toInt() and 255)}
+        val file=CacheManager(targetContext,settings).mediaFile(sha).apply{writeBytes(bytes)}
+        var activity:SportsActivity?=null
+        try{
+            settings.applySnapshot(settings.publicSnapshot().put("scoreboard_layout","bottom").put("scoreboard_playlist_bottom",92))
+            val item=JSONObject().put("sha256",sha).put("mime","image/png").put("layout","bottom").put("duration",60).put("transition","cut")
+            val list=JSONObject().put("layout","bottom").put("orientation","landscape").put("items",org.json.JSONArray().put(item))
+            val manifest=JSONObject().put("schema_version",3).put("orientation","landscape").put("playlist_catalog",JSONObject().put("92",list))
+                .put("media_formats",JSONObject().put("revision",1).put("bottom_height_pct",20).put("side_width_pct",40))
+                .put("fallback",JSONObject().put("items",org.json.JSONArray().put(JSONObject().put("name","DO NOT INHERIT CARTELERA"))))
+            active.parentFile?.mkdirs();active.writeText(manifest.toString())
+            activity=startActivitySync(Intent(targetContext,SportsActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) as SportsActivity
+            var attached=false
+            for(i in 0 until 60){runOnMainSync{val stage=activity!!.window.decorView.findViewWithTag<android.widget.FrameLayout>("sports-media");attached=stage.width>0&&(stage.getChildAt(0)?.height?:0)>0};if(attached)break;Thread.sleep(100)}
+            check(attached){"Sports playlist never shown"};waitForIdleSync()
+            runOnMainSync{
+                val root=activity!!.window.decorView.findViewWithTag<RegionLayout>("sports-regions")
+                val media=root.media
+                check(kotlin.math.abs(media.height-root.height*.2f)<=1f){"Bottom is not 20% of full canvas: ${media.height}/${root.height}"}
+                check(media.width==root.width){"Bottom does not span canvas width"}
+                val box=media.getChildAt(0) as android.widget.FrameLayout
+                check(box.height==media.height&&box.width==media.width){"Percentage applied a second time"}
+                val image=box.getChildAt(0) as android.widget.ImageView
+                check(image.height==media.height&&image.width==media.width)
+                val rect=android.graphics.RectF(0f,0f,image.drawable.intrinsicWidth.toFloat(),image.drawable.intrinsicHeight.toFloat());image.imageMatrix.mapRect(rect)
+                check(kotlin.math.abs(rect.width()-image.width)<2&&kotlin.math.abs(rect.height()-image.height)<2){"Compatible banner does not fill media area: $rect vs ${image.width}x${image.height}"}
+                println("SPORTS_REGION_20_PASS canvas=${root.width}x${root.height}; media=${media.width}x${media.height}; image=$rect")
+                for((w,h) in listOf(1920 to 1080,1280 to 720,1080 to 1920))for(p in listOf(20,30)){
+                    val b=DisplayRegions.split(w,h,"bottom",p);check(b.media.height==h*p/100&&b.media.width==w&&b.board.height+b.media.height==h)
+                    val s=DisplayRegions.split(w,h,"side",40);check(s.media.width==w*40/100&&s.media.height==h&&s.board.width+s.media.width==w)
+                }
+            }
+        }finally{runOnMainSync{activity?.finish()};settings.applySnapshot(old);if(previous!=null)active.writeBytes(previous)else active.delete();file.delete()}
     }
     private fun exerciseServiceGate(){
         val prefs=targetContext.getSharedPreferences("signage_service_policy_v1",0);val old=prefs.all.toMap();prefs.edit().clear().commit()

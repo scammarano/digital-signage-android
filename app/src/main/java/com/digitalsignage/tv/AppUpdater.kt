@@ -137,14 +137,12 @@ object AppUpdater {
                     Uri.parse("package:"+activity.packageName)))
                 return
             }
-            val uri=Uri.parse(URI)
-            val intent=Intent(Intent.ACTION_VIEW).apply {
-                setDataAndType(uri,"application/vnd.android.package-archive")
-                addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
-                clipData=ClipData.newRawUri("Actualización Digital Signage",uri)
-            }
-            activity.startActivity(intent)
-        }catch(e:Exception){message(activity,"Instalación no iniciada",e.message?:"Sin instalador")}
+            ApkInstaller.launch(ApkInstaller.intents(activity,file)){activity.startActivity(it)}
+            DeviceLogs(activity).record("info","apk_installer_opened","Instalador solicitado; confirmación del usuario pendiente",info.optString("version"))
+        }catch(e:Exception){
+            DeviceLogs(activity).record("error","apk_installer_failed",e.javaClass.simpleName,e.message?.take(240)?:"Sin instalador")
+            message(activity,"Instalación no iniciada",e.message?:"Sin instalador")
+        }
     }
     private fun confirm(activity:Activity,title:String,message:String,onConfirm:()->Unit) {
         ui.post{if(!activity.isFinishing)AlertDialog.Builder(activity)
@@ -156,3 +154,4 @@ object AppUpdater {
             .setMessage(message).setPositiveButton("Aceptar",null).show()}
     }
 }
+

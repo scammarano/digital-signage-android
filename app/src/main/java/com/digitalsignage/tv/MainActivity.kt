@@ -85,6 +85,7 @@ class MainActivity : Activity() {
     private var syncInFlight=false
     private var lastLive=JSONObject()
     private var mode3Header:TextView?=null
+    private var lanBoard:SportsBoardView?=null
     private var liveAdCycleStartedAt=0L
     private var lastBlockedMode=""
     private var lastRenderSettings=""
@@ -277,7 +278,7 @@ class MainActivity : Activity() {
         val renderSettings=settings.publicSnapshot().toString()
         if(mode==activeMode && lastRenderSettings==renderSettings && (stage!=null || mode==2))return
         lastRenderSettings=renderSettings;liveAdCycleStartedAt=System.currentTimeMillis()
-        activeMode=mode;playlistIdentity="";deck?.clear();deck=null;stage=null;mode3Header=null
+        activeMode=mode;playlistIdentity="";deck?.clear();deck=null;stage=null;mode3Header=null;lanBoard=null
         when(mode){1->showSignage(false);2->showOverlayControl();3,4->showSignage(true);else->showDisabled()}
         if(mode!=lastSelectedMode){
             DeviceDebug.record(this,logs,"started",settings.remoteRevision,
@@ -306,22 +307,15 @@ class MainActivity : Activity() {
     }
     private fun showSignage(smart:Boolean){stopOverlay()
         requestedOrientation=if(manifest?.json?.optString("orientation")=="portrait")ActivityInfo.SCREEN_ORIENTATION_PORTRAIT else ActivityInfo.SCREEN_ORIENTATION_LANDSCAPE
-        val root=FrameLayout(this).apply{setBackgroundColor(ScreenStyles.BACKGROUND)}
         val layout=if(smart)settings.modeLayout(activeMode) else "fullscreen"
-        val dm=resources.displayMetrics;val w=dm.widthPixels;val h=dm.heightPixels
-        val prefix=if(activeMode==4)"scoreboard" else "queue"
-        val mediaW=when(layout){"side"->w*settings.mediaFormatPercent("side")/100;"half_vertical"->w/2;else->w}
-        val mediaH=when(layout){"bottom"->h*settings.mediaFormatPercent("bottom")/100;"half_horizontal"->h/2;else->h}
-        if(smart){
+        val media=FrameLayout(this).apply{setBackgroundColor(0xFF020609.toInt())}
+        val root:FrameLayout=if(smart){
             val label=ScreenStyles.label(this,"Esperando aplicación…",26f).apply{gravity=Gravity.CENTER;setBackgroundColor(0xFF152845.toInt())}
             mode3Header=label
-            val boardW=if(layout in listOf("side","half_vertical"))w-mediaW else w
-            val boardH=if(layout in listOf("bottom","half_horizontal"))h-mediaH else h
-            root.addView(label,FrameLayout.LayoutParams(boardW,boardH,Gravity.TOP or Gravity.LEFT))
-        }
-        val media=FrameLayout(this).apply{setBackgroundColor(0xFF020609.toInt())}
-        // Full screen advertising is a temporary takeover, preserving the live widget behind it.
-        root.addView(media,FrameLayout.LayoutParams(mediaW,mediaH,Gravity.BOTTOM or Gravity.RIGHT))
+            val board:View=if(activeMode==4&&settings.settingString("scoreboard_source")=="lan")SportsBoardView(this).also{lanBoard=it} else label
+            RegionLayout(this,layout,settings.mediaFormatPercent(layout),board,media)
+        }else FrameLayout(this).apply{addView(media,FrameLayout.LayoutParams(-1,-1))}
+        root.setBackgroundColor(ScreenStyles.BACKGROUND)
         stage=media;deck=MediaDeck(media,cache,if(smart)false else settings.videoAudio,smart)
         val hud=ScreenStyles.label(this,"Digital Signage",13f).apply{setBackgroundColor(0x990A1424.toInt());gravity=Gravity.END}
         status=hud
@@ -335,7 +329,8 @@ class MainActivity : Activity() {
     }
     private fun drawLiveBoard(){
         if(activeMode==4 && settings.settingString("scoreboard_source")=="lan"){
-            SportsRuntime.start(this);mode3Header?.text=SportsRuntime.board(this)
+            SportsRuntime.start(this)
+            lanBoard?.update(SportsRuntime.host(this).displaySnapshot(),SportsRuntime.board(this))
             if(SportsRuntime.error.isBlank() && (DeviceDebug.effective(this)!=settings.remoteRevision || DeviceDebug.effectiveMode(this)!=4))
                 DeviceDebug.record(this,logs,"effective",settings.remoteRevision,"Sports directo LAN mostrado",4)
             return
