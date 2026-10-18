@@ -109,8 +109,7 @@ jobs:
             # real wlan0 a private test address; do not permit cellular in production.
             adb root
             adb wait-for-device
-            adb shell ip link set wlan0 up
-            adb shell ip addr replace 172.18.22.2/24 dev wlan0
+            if adb shell ip link show wlan0 >/dev/null 2>&1; then adb shell ip link set wlan0 up; adb shell ip addr replace 172.18.22.2/24 dev wlan0; fi
             adb shell ip -4 address
             adb shell settings put global install_non_market_apps 1
             adb shell settings put secure install_non_market_apps 1

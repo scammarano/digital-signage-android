@@ -102,6 +102,7 @@ class SportsInstrumentation:Instrumentation(){
             val parsed=ApplicationCatalog.validate(actual,app)
             check(parsed.getLong("revision")==9L)
             check(!parsed.toString().contains("privad"))
+            val rows=parsed.getJSONArray("entities");for(i in 0 until rows.length())rows.getJSONObject(i).getJSONObject("config")
             check(ApplicationCatalog.scopeLabel(parsed).contains(if(app=="turnos")"Sala central" else "Pista central"))
         }
         val app="turnos";val base="https://portal.invalid/public/";val secret="catalog-ci-"+System.nanoTime()
@@ -128,6 +129,7 @@ class SportsInstrumentation:Instrumentation(){
             rejects{cache.accept(snapshot().apply{getJSONArray("entities").put(entity(8,"room"))})}
             rejects{cache.accept(snapshot().apply{getJSONArray("entities").put(entity(9,"screen",1))})}
             rejects{cache.accept(snapshot().apply{getJSONArray("entities").getJSONObject(2).put("parent_id",90)})}
+            rejects{cache.accept(snapshot().apply{getJSONArray("entities").getJSONObject(2).put("config",org.json.JSONArray().put("unexpected"))})}
             check(cache.cached()!!.getInt("revision")==2){"Rejected snapshot destroyed last valid copy"}
             check(ApplicationCatalog(targetContext,base,secret+"other",app).cached()==null)
             check(ApplicationCatalog(targetContext,base+"other/",secret,app).cached()==null)

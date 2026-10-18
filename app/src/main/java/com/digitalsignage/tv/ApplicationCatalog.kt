@@ -38,17 +38,23 @@ class ApplicationCatalog(context:Context,portal:String,secret:String,val applica
         }
         fun validate(value:JSONObject,app:String):JSONObject{
             require(app in listOf("turnos","sports"))
-            require(integer(value,"schema_version")==1L){"Esquema de aplicación incompatible"}
-            require(value.getString("application")==app){"Aplicación incompatible"}
-            integer(value,"tenant_id",true);integer(value,"revision")
-            val settings=value.getJSONObject("settings");require(settings.getString("title").length<=160)
-            val entities=value.getJSONArray("entities");require(entities.length() in 2..10000)
+            val normalized=JSONObject(value.toString())
+            require(integer(normalized,"schema_version")==1L){"Esquema de aplicación incompatible"}
+            require(normalized.getString("application")==app){"Aplicación incompatible"}
+            integer(normalized,"tenant_id",true);integer(normalized,"revision")
+            val settings=normalized.getJSONObject("settings");require(settings.getString("title").length<=160)
+            val entities=normalized.getJSONArray("entities");require(entities.length() in 2..10000)
             val rows=linkedMapOf<Long,JSONObject>()
             val allowed=if(app=="turnos")setOf("room","service","counter","screen") else setOf("venue","court","tournament","team","match","screen")
             for(i in 0 until entities.length()){
                 val row=entities.getJSONObject(i);val id=integer(row,"id",true)
                 require(!rows.containsKey(id)&&row.get("enabled")==true&&row.getString("kind") in allowed)
-                require(row.getString("name").length<=160);row.getJSONObject("config")
+                require(row.getString("name").length<=160)
+                // PHP29 serializes an empty associative configuration as []; accept only
+                // that empty legacy representation, never a non-empty array of values.
+                val config=row.get("config")
+                if(config is org.json.JSONArray){require(config.length()==0);row.put("config",JSONObject())}
+                else require(config is JSONObject)
                 if(!row.isNull("parent_id"))integer(row,"parent_id",true)
                 require(!row.has("user_id"));rows[id]=row
             }
@@ -70,7 +76,7 @@ class ApplicationCatalog(context:Context,portal:String,secret:String,val applica
                 }
             }
             // Deep copy: callers cannot mutate the validated/cached object by retaining input references.
-            return JSONObject(value.toString())
+            return normalized
         }
         fun scopeLabel(value:JSONObject):String{
             val rows=value.getJSONArray("entities");val parts=mutableListOf<String>()
