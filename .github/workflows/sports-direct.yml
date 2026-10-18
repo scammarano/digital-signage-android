@@ -86,6 +86,7 @@ jobs:
             if [ "${{ matrix.api }}" -ge 23 ]; then adb shell appops set com.digitalsignage.tv SYSTEM_ALERT_WINDOW allow; fi
             adb shell am instrument -w com.digitalsignage.tv.test/com.digitalsignage.tv.SportsInstrumentation | tee /tmp/fire-sports-test.txt
             grep -q SPORTS_FIRE_DIRECT_PASS /tmp/fire-sports-test.txt
+            adb exec-out run-as com.digitalsignage.tv cat files/sports-region.png > /tmp/fire-sports-region.png
       - uses: actions/upload-artifact@v4
         if: always()
         with:
@@ -94,5 +95,6 @@ jobs:
             sports-core/build/reports/tests/test/
             /tmp/fire-sports-test.txt
             /tmp/fire-apk-metadata.txt
+            /tmp/fire-sports-region.png
           if-no-files-found: ignore
 

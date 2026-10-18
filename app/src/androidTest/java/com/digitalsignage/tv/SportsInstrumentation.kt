@@ -11,15 +11,30 @@ import services.twocam.sportscore.LocalSportsHost
 /** API22 real: servidor dentro de APK, sin Node ni computadora como autoridad. */
 class SportsInstrumentation:Instrumentation(){
     private var pinVerifyMs=-1L
+    private val verificationDetails=StringBuilder()
     override fun onCreate(arguments:Bundle?){super.onCreate(arguments);start()}
-    override fun onStart(){val result=Bundle();try{exercise();result.putString("stream","SPORTS_FIRE_DIRECT_PASS\nMEDIA_FORMATS_CENTRAL_PASS\nPIN_MIGRATION_PASS subsequent_verification_ms=$pinVerifyMs\nOVERLAY_WINDOW_PASS BOOT_BACKGROUND_POLICY_PASS MODE_PLAYLIST_GATE_PASS\n");finish(Activity.RESULT_OK,result)}catch(e:Throwable){result.putString("stream","SPORTS_FIRE_DIRECT_FAIL ${e.javaClass.simpleName}: ${e.message}\n");finish(Activity.RESULT_CANCELED,result)}}
+    override fun onStart(){val result=Bundle();try{exercise();result.putString("stream","SPORTS_FIRE_DIRECT_PASS\nMEDIA_FORMATS_CENTRAL_PASS\nPIN_MIGRATION_PASS subsequent_verification_ms=$pinVerifyMs\nOVERLAY_WINDOW_PASS BOOT_BACKGROUND_POLICY_PASS MODE_PLAYLIST_GATE_PASS\n$verificationDetails");finish(Activity.RESULT_OK,result)}catch(e:Throwable){result.putString("stream","SPORTS_FIRE_DIRECT_FAIL ${e.javaClass.simpleName}: ${e.message}\n$verificationDetails");finish(Activity.RESULT_CANCELED,result)}}
     private fun api(method:String,path:String,token:String?=null,body:JSONObject?=null,key:String?=null):JSONObject {
-        val c=java.net.URL(SportsRuntime.address+"/api/v1"+path).openConnection() as java.net.HttpURLConnection
-        c.connectTimeout=4000;c.readTimeout=4000;c.requestMethod=method
-        if(token!=null)c.setRequestProperty("Authorization","Bearer $token");if(key!=null)c.setRequestProperty("Idempotency-Key",key)
-        try{if(body!=null){c.doOutput=true;c.setRequestProperty("Content-Type","application/json");c.outputStream.use{it.write(body.toString().toByteArray(Charsets.UTF_8))}}
-            val code=c.responseCode;val raw=(if(code>=400)c.errorStream else c.inputStream).bufferedReader().use{it.readText()};check(code in 200..299){"HTTP $code $raw"};return JSONObject(raw)
-        }finally{c.disconnect()}
+        // The test is a LAN controller of the raw-socket authority. Do not relax the portal's
+        // production HTTPS-only HttpURLConnection policy just to act as a local test client.
+        val url=java.net.URL(SportsRuntime.address+"/api/v1"+path)
+        val address=java.net.InetAddress.getByName(url.host);check(url.protocol=="http"&&address.isSiteLocalAddress)
+        val payload=body?.toString()?.toByteArray(Charsets.UTF_8)?:ByteArray(0)
+        java.net.Socket().use{socket->
+            socket.connect(java.net.InetSocketAddress(address,url.port),4000);socket.soTimeout=4000
+            val headers=buildString{
+                append("$method ${url.file} HTTP/1.1\r\nHost: ${url.host}:${url.port}\r\nConnection: close\r\n")
+                if(token!=null)append("Authorization: Bearer $token\r\n")
+                if(key!=null)append("Idempotency-Key: $key\r\n")
+                if(body!=null)append("Content-Type: application/json\r\nContent-Length: ${payload.size}\r\n")
+                append("\r\n")
+            }
+            socket.getOutputStream().apply{write(headers.toByteArray(Charsets.US_ASCII));write(payload);flush()}
+            val reader=socket.getInputStream().bufferedReader(Charsets.UTF_8)
+            val code=reader.readLine().split(' ')[1].toInt()
+            while(!reader.readLine().isNullOrEmpty()){}
+            val raw=reader.readText();check(code in 200..299){"HTTP $code $raw"};return JSONObject(raw)
+        }
     }
     private fun exercise(){
         val formats=JSONObject().put("revision",4).put("side_width_pct",35).put("bottom_height_pct",30)
@@ -110,6 +125,7 @@ class SportsInstrumentation:Instrumentation(){
             for(i in 0 until 60){val root=uiAutomation.rootInActiveWindow;actual=root?.packageName?.toString()?:"";screen=text(root);if(actual==installer&&screen.contains("2Cam Digital Signage"))break;Thread.sleep(100)}
             check(actual==installer&&screen.contains("2Cam Digital Signage")){"Installer did not parse/display application: $actual / $installer; $screen"}
             println("APK_INSTALLER_HANDOFF_PASS sdk=${android.os.Build.VERSION.SDK_INT} scheme=$expectedScheme package=$installer; no installation accepted")
+            verificationDetails.append("APK_INSTALLER_HANDOFF_PASS sdk=${android.os.Build.VERSION.SDK_INT} scheme=$expectedScheme package=$installer\n")
         }finally{
             uiAutomation.performGlobalAction(android.accessibilityservice.AccessibilityService.GLOBAL_ACTION_BACK)
             Thread.sleep(300);runOnMainSync{activity.finish()}
@@ -149,11 +165,13 @@ class SportsInstrumentation:Instrumentation(){
                 val rect=android.graphics.RectF(0f,0f,image.drawable.intrinsicWidth.toFloat(),image.drawable.intrinsicHeight.toFloat());image.imageMatrix.mapRect(rect)
                 check(kotlin.math.abs(rect.width()-image.width)<2&&kotlin.math.abs(rect.height()-image.height)<2){"Compatible banner does not fill media area: $rect vs ${image.width}x${image.height}"}
                 println("SPORTS_REGION_20_PASS canvas=${root.width}x${root.height}; media=${media.width}x${media.height}; image=$rect")
+                verificationDetails.append("SPORTS_REGION_20_PASS canvas=${root.width}x${root.height}; media=${media.width}x${media.height}; image=$rect\n")
                 for((w,h) in listOf(1920 to 1080,1280 to 720,1080 to 1920))for(p in listOf(20,30)){
                     val b=DisplayRegions.split(w,h,"bottom",p);check(b.media.height==h*p/100&&b.media.width==w&&b.board.height+b.media.height==h)
                     val s=DisplayRegions.split(w,h,"side",40);check(s.media.width==w*40/100&&s.media.height==h&&s.board.width+s.media.width==w)
                 }
             }
+            uiAutomation.takeScreenshot()?.let{shot->targetContext.openFileOutput("sports-region.png",0).use{shot.compress(android.graphics.Bitmap.CompressFormat.PNG,100,it)};shot.recycle()}
         }finally{runOnMainSync{activity?.finish()};settings.applySnapshot(old);if(previous!=null)active.writeBytes(previous)else active.delete();file.delete()}
     }
     private fun exerciseServiceGate(){
