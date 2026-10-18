@@ -23,6 +23,7 @@ class MediaDeck(private val stage:FrameLayout,private val cache:CacheManager,pri
     private var currentVideo:VideoView?=null
     private var pendingTimer:Runnable?=null
     fun clear(){++serial;pendingTimer?.let{main.removeCallbacks(it)};pendingTimer=null;currentVideo?.stopPlayback();currentVideo=null;current=null;stage.removeAllViews()}
+    fun release(){clear();decode.shutdownNow()}
     private fun sizeFor(item:JSONObject):FrameLayout.LayoutParams {
         if(regionIsSized)return FrameLayout.LayoutParams(-1,-1)
         val width=stage.width.takeIf{it>0}?:stage.resources.displayMetrics.widthPixels

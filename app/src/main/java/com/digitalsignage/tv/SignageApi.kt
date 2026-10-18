@@ -13,6 +13,7 @@ class SignageApi(private val baseUrl:String, private val token:String?) {
         return call("api-device.php?op=pair",JSONObject().put("code",code))
     }
     fun manifest()=call("api-device.php?op=manifest")
+    fun previewPlaylist(id:Int):JSONObject {require(id>0);return call("api-device.php?op=preview&playlist_id=$id")}
     fun service()=call("api-device.php?op=service").getJSONObject("service")
     fun reportService(data:JSONObject)=call("api-device.php?op=service",data)
     fun live()=call("api-device.php?op=live")
@@ -26,7 +27,7 @@ class SignageApi(private val baseUrl:String, private val token:String?) {
     }
     fun desiredConfig()=call("api-device-config.php?op=desired")
     fun reportConfig(data:JSONObject)=call("api-device-config.php?op=report",data)
-    fun heartbeat(data:JSONObject)=call("api-device.php?op=heartbeat",data)
+    fun heartbeat(data:JSONObject)=call("api-device.php?op=heartbeat",data.put("local_ip",DeviceNetwork.addresses().firstOrNull()?:JSONObject.NULL))
     fun control():JSONObject=call("api-device-telemetry.php?op=control")
     fun acknowledgeControl(revision:Long):JSONObject=call("api-device-telemetry.php?op=ack",JSONObject().put("revision",revision))
     fun submitLogs(events:org.json.JSONArray):JSONObject=call("api-device-telemetry.php?op=logs",JSONObject().put("events",events))

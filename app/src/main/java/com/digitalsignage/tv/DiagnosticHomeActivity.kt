@@ -94,6 +94,7 @@ class DiagnosticHomeActivity:Activity() {
         val root=ScreenStyles.column(this)
         root.addView(ScreenStyles.label(this,"2CAM DIGITAL SIGNAGE",28f))
         root.addView(ScreenStyles.label(this,"${BuildConfig.VERSION_NAME} · DIAGNÓSTICO DE SOPORTE MANUAL · Android API ${android.os.Build.VERSION.SDK_INT}",15f))
+        root.addView(ScreenStyles.label(this,DeviceNetwork.label(),19f))
         val connected=key()!=null
         root.addView(ScreenStyles.label(this,if(connected)"Vinculación local: GUARDADA" else "Vinculación local: NO EXISTE",17f))
         root.addView(ScreenStyles.label(this,"No hay reproducción ni sincronización en segundo plano. Ejecuta cada botón en orden.",16f))

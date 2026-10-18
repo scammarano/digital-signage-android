@@ -41,7 +41,8 @@ object ApkInstaller {
     fun intents(context:Context,verified:File):List<Intent> {
         val uri=if(Build.VERSION.SDK_INT<24)Uri.fromFile(legacyFile(context,verified))
             else Uri.parse("content://com.digitalsignage.tv.apkfile/pending.apk")
-        return listOf(Intent.ACTION_INSTALL_PACKAGE,Intent.ACTION_VIEW).map{action->
+        val actions=if(Build.VERSION.SDK_INT<24)listOf(Intent.ACTION_VIEW,Intent.ACTION_INSTALL_PACKAGE) else listOf(Intent.ACTION_INSTALL_PACKAGE,Intent.ACTION_VIEW)
+        return actions.map{action->
             Intent(action).apply{
                 setDataAndType(uri,MIME)
                 if(uri.scheme=="content"){

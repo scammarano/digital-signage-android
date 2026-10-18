@@ -17,7 +17,9 @@ class CacheManager(private val context:Context,private val settings:SettingsStor
     fun formatPercent(layout:String):Int=MediaFormats.percent(active()?.optJSONObject("media_formats"),layout)
     fun countMedia():Int=settings.cacheDirectory().listFiles()?.count{it.isFile&&it.name.matches(Regex("[a-f0-9]{64}"))}?:0
     fun freeBytes():Long=StatFs(settings.cacheDirectory().absolutePath).availableBytes
-    fun sync(api:SignageApi,manifest:JSONObject,onProgress:(String)->Unit):Int = synchronized(syncLock) {
+    fun sync(api:SignageApi,manifest:JSONObject,onProgress:(String)->Unit):Int=syncInternal(api,manifest,true,onProgress)
+    fun preview(api:SignageApi,manifest:JSONObject,onProgress:(String)->Unit):Int=syncInternal(api,manifest,false,onProgress)
+    private fun syncInternal(api:SignageApi,manifest:JSONObject,activate:Boolean,onProgress:(String)->Unit):Int = synchronized(syncLock) {
         MediaFormats.validate(manifest.optJSONObject("media_formats"))
         val model=ManifestModel(manifest);val list=model.allMedia();val cache=settings.cacheDirectory()
         val expected=list.sumOf{maxOf(it.optLong("size",0),0)}
@@ -61,6 +63,7 @@ class CacheManager(private val context:Context,private val settings:SettingsStor
                 done++
             }finally{if(tmp.exists())tmp.delete()}
         }
+        if(!activate)return@synchronized done
         // Keep prior playlist content until the new manifest is complete; never switch on partial downloads.
         val now=File(internal,"active.json");val previous=File(internal,"previous.json")
         val candidate=File(internal,"candidate.json")

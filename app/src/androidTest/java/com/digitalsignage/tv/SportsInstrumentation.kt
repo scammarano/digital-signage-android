@@ -51,6 +51,7 @@ class SportsInstrumentation:Instrumentation(){
         exerciseServiceGate()
         exerciseMediaTiming()
         exercisePin()
+        exerciseSettingsRemote()
         exerciseOverlay()
         exerciseInstaller()
         exerciseDisplayRegions()
@@ -140,6 +141,33 @@ class SportsInstrumentation:Instrumentation(){
             cache.revoke();check(cache.cached()==null)
             verificationDetails.append("APPLICATION_CATALOG_PASS real_PHP29_JSON schema scope revision isolation persistence revocation\n")
         }finally{cache.revoke()}
+    }
+    private fun exerciseSettingsRemote(){
+        val settings=SettingsStore(targetContext);val saved=settings.publicSnapshot();settings.setPin("864209")
+        val activity=startActivitySync(Intent(targetContext,SettingsActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK)) as SettingsActivity
+        fun nodes(node:android.view.accessibility.AccessibilityNodeInfo?):List<android.view.accessibility.AccessibilityNodeInfo>{
+            if(node==null)return emptyList();val out=mutableListOf(node);for(i in 0 until node.childCount)out.addAll(nodes(node.getChild(i)));return out
+        }
+        fun write(value:String){val node=nodes(uiAutomation.rootInActiveWindow).first{it.className=="android.widget.EditText"};check(node.performAction(android.view.accessibility.AccessibilityNodeInfo.ACTION_SET_TEXT,Bundle().apply{putCharSequence(android.view.accessibility.AccessibilityNodeInfo.ACTION_ARGUMENT_SET_TEXT_CHARSEQUENCE,value)}))}
+        fun click(text:String){val node=nodes(uiAutomation.rootInActiveWindow).first{it.text?.toString()==text&&it.isClickable};check(node.performAction(android.view.accessibility.AccessibilityNodeInfo.ACTION_CLICK))}
+        fun views(view:android.view.View):List<android.view.View>{val out=mutableListOf(view);if(view is android.view.ViewGroup)for(i in 0 until view.childCount)out.addAll(views(view.getChildAt(i)));return out}
+        try{
+            Thread.sleep(400);write("864209");click("Entrar")
+            var ready=false;for(i in 0 until 50){runOnMainSync{ready=activity.window.decorView.findViewWithTag<android.view.View>("tab:Overlay")!=null};if(ready)break;Thread.sleep(100)};check(ready){"Settings did not open after PIN"}
+            runOnMainSync{activity.window.decorView.findViewWithTag<android.view.View>("tab:Overlay").performClick()}
+            Thread.sleep(200)
+            runOnMainSync{
+                val button=views(activity.window.decorView).filterIsInstance<android.widget.Button>().first{it.text.toString().startsWith("Opacidad")}
+                check(button.isFocusable&&button.width<activity.resources.displayMetrics.widthPixels*.9f);check(button.requestFocus())
+            }
+            sendKeyDownUpSync(android.view.KeyEvent.KEYCODE_DPAD_CENTER);Thread.sleep(200)
+            check(nodes(uiAutomation.rootInActiveWindow).any{it.className=="android.widget.EditText"&&it.isFocused}){"Numeric editor not focused after remote OK"}
+            write("73");click("Guardar");Thread.sleep(200)
+            check(settings.overlayOpacity==73){"TV editor did not persist numeric input"}
+            runOnMainSync{activity.window.decorView.findViewWithTag<android.view.View>("tab:Actualizaciones").performClick()}
+            runOnMainSync{check(views(activity.window.decorView).filterIsInstance<android.widget.Button>().any{it.text=="Buscar actualización de APK ahora"})}
+            verificationDetails.append("TV_TABS_DPAD_PASS PIN tabs numeric_OK_editor persistence safe_width IP\n")
+        }finally{runOnMainSync{activity.finish()};check(settings.applySnapshot(saved))}
     }
     private fun exerciseInstaller(){
         val source=java.io.File(targetContext.applicationInfo.sourceDir)
@@ -255,7 +283,12 @@ class SportsInstrumentation:Instrumentation(){
                 {shown=android.os.SystemClock.elapsedRealtime()})
         }
         check(complete.await(4,java.util.concurrent.TimeUnit.SECONDS)){"Short image did not complete"}
-        runOnMainSync{deck?.clear()};file.delete()
+        runOnMainSync{deck?.release()}
+        val original=cache.active()?.toString()
+        val preview=JSONObject().put("fallback",JSONObject().put("items",org.json.JSONArray().put(JSONObject().put("sha256",sha).put("size",bytes.size))))
+        cache.preview(SignageApi("https://preview.invalid/",null),preview){}
+        check(cache.active()?.toString()==original){"Preview replaced active programming"}
+        file.delete()
         check(failure==null && elapsed in 70L..900L){"Fractional image timing: $elapsed ms; $failure"}
         println("FRACTIONAL_MEDIA_PASS actual_image_ms=$elapsed")
     }
@@ -289,14 +322,14 @@ class SportsInstrumentation:Instrumentation(){
         val file=CacheManager(targetContext,settings).mediaFile(sha);file.writeBytes(bytes)
         try{
             val config=JSONObject(original.toString()).put("enabled_modes",15).put("primary_mode",2).put("overlay_layout","bottom")
-                .put("overlay_playlist_bottom",91).put("debug_hud_enabled",false)
+                .put("overlay_playlist_bottom",91).put("debug_hud_enabled",false).put("overlay_duration_sec",3)
             settings.applySnapshot(config);settings.manualMode=2
             check(ModeReadiness.error(config,null,2)!=null)
             val empty=ManifestModel(JSONObject().put("orientation","landscape"))
             check(ModeReadiness.error(config,empty,2)!=null){"Missing playlist accepted"}
             val item=JSONObject().put("mime","image/png").put("layout","bottom").put("sha256",sha).put("size",bytes.size).put("duration",0.1)
             val list=JSONObject().put("id",91).put("layout","bottom").put("orientation","landscape").put("item_count",1).put("image_count",1)
-                .put("items",org.json.JSONArray().put(item))
+                .put("items",org.json.JSONArray().put(JSONObject(item.toString()).put("duration",0.4).put("transition","fade")).put(JSONObject(item.toString()).put("duration",0.4).put("transition","slide-left")))
             val manifest=JSONObject().put("schema_version",3).put("orientation","landscape").put("playlist_catalog",JSONObject().put("91",list))
             val model=ManifestModel(manifest)
             check(ModeReadiness.error(config,model,2)==null)
@@ -312,7 +345,7 @@ class SportsInstrumentation:Instrumentation(){
             check(OverlayMotion.offset("top",80,20).second<0 && OverlayMotion.offset("left",80,20).first<0)
             active.parentFile?.mkdirs();active.writeText(manifest.toString())
             settings.applySnapshot(JSONObject(config.toString()).put("primary_mode",1));settings.manualMode=0
-            val before=OverlayService.lastShownAt
+            val before=OverlayService.lastShownAt;val shownBefore=OverlayService.itemsShown
             val gate=ServiceGate(targetContext)
             gate.accept(JSONObject().put("revision",10).put("suspended",true))
             runOnMainSync{AndroidCompat.startServiceCompat(targetContext,Intent(targetContext,OverlayService::class.java).setAction(OverlayService.ACTION_PREVIEW))}
@@ -322,10 +355,12 @@ class SportsInstrumentation:Instrumentation(){
             runOnMainSync{AndroidCompat.startServiceCompat(targetContext,Intent(targetContext,OverlayService::class.java).setAction(OverlayService.ACTION_PREVIEW))}
             for(i in 0 until 60){if(OverlayService.lastShownAt>before)break;Thread.sleep(100)}
             check(OverlayService.lastShownAt>before){"Overlay window was not attached"}
-            for(i in 0 until 20){if(OverlayService.lastHiddenAt>=OverlayService.lastShownAt)break;Thread.sleep(50)}
+            for(i in 0 until 100){if(OverlayService.lastHiddenAt>=OverlayService.lastShownAt)break;Thread.sleep(50)}
             val visibleMs=OverlayService.lastHiddenAt-OverlayService.lastShownAt
-            check(visibleMs in 40L..900L){"Fractional Overlay did not hide: $visibleMs ms"}
-            println("FRACTIONAL_OVERLAY_PASS actual_window_ms=$visibleMs")
+            check(visibleMs in 2700L..4200L){"Overlay playlist window: $visibleMs ms"}
+            check(OverlayService.itemsShown-shownBefore>=2){"Overlay showed only one image"}
+            check(OverlayService.windowSlots and 3L==3L){"Overlay did not advance A/B within the same window"}
+            println("OVERLAY_PLAYLIST_WINDOW_PASS actual_window_ms=$visibleMs; items=${OverlayService.itemsShown-shownBefore}")
             check(settings.primaryMode==1 && settings.manualMode==0){"Preview changed saved mode"}
             println("OVERLAY_WINDOW_PASS BOOT_BACKGROUND_POLICY_PASS MODE_PLAYLIST_GATE_PASS")
             println("SERVICE_OVERLAY_PASS suspended window blocked, resume displayed")

@@ -179,6 +179,7 @@ class MainActivity : Activity() {
             val splash=FrameLayout(this).apply{setBackgroundColor(ScreenStyles.BACKGROUND)}
             val brand=ScreenStyles.label(this,"2Cam Digital Signage",36f).apply{gravity=Gravity.CENTER;textAlignment=View.TEXT_ALIGNMENT_CENTER}
             splash.addView(brand,FrameLayout.LayoutParams(-1,-1))
+            splash.addView(ScreenStyles.label(this,DeviceNetwork.label(),18f),FrameLayout.LayoutParams(-1,-2,Gravity.BOTTOM))
             setContentView(splash)
             ui.postDelayed({startingSplash=false; if(token.load()==null)showPairing() else {showMode();sync();checkAppUpdates()}; ui.post(tick)},900)
         }else{
@@ -266,6 +267,7 @@ class MainActivity : Activity() {
         else {
             val box=ScreenStyles.column(this)
             box.addView(ScreenStyles.label(this,"Sincronizando...",25f))
+            box.addView(ScreenStyles.label(this,DeviceNetwork.label(),18f))
             box.addView(ScreenStyles.button(this,"Configuración") {openSettings()})
             box.addView(ScreenStyles.button(this,"Diagnóstico") {openDiagnostics()})
             setContentView(box)
@@ -275,6 +277,7 @@ class MainActivity : Activity() {
     private fun showPairing(){activeMode=-1;stopOverlay();deck?.clear();deck=null
         val box=ScreenStyles.column(this)
         box.addView(ScreenStyles.label(this,"DIGITAL SIGNAGE TV",32f))
+        box.addView(ScreenStyles.label(this,DeviceNetwork.label(),20f))
         box.addView(ScreenStyles.label(this,"Vincula el dispositivo desde Pantallas → Generar código",19f))
         val code=EditText(this).apply{hint="Código de 6 dígitos";inputType=2;isSingleLine=true;setTextColor(0xFF151515.toInt());setBackgroundColor(0xFFFFFFFF.toInt());setSingleLine(true)}
         box.addView(code)
@@ -408,6 +411,7 @@ class MainActivity : Activity() {
     }
     private fun showOverlayControl(){
         val box=ScreenStyles.column(this)
+        box.addView(ScreenStyles.label(this,DeviceNetwork.label(),18f))
         box.addView(ScreenStyles.label(this,"Modo Overlay programado",30f))
         val available=AndroidCompat.canOverlay(this)
         box.addView(ScreenStyles.label(this,if(available)"Overlay activo en segundo plano. Puedes elegir tu aplicación de video desde Inicio. Con Inicio automático activado, no necesitas abrir Digital Signage después de reiniciar el dispositivo." else "Debes autorizar Mostrar sobre otras aplicaciones para usar Overlay."))

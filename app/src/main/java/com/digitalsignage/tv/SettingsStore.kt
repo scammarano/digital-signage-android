@@ -239,7 +239,6 @@ class SettingsStore(private val context: Context) {
             }
         }
         require(full.getInt("enabled_modes") and (1 shl (full.getInt("primary_mode")-1))!=0){"El modo principal debe estar habilitado"}
-        require(full.getInt("overlay_duration_sec")<full.getInt("overlay_interval_sec")){"Duración Overlay debe ser menor que intervalo"}
         return full
     }
     @Synchronized fun applySnapshot(snapshot:org.json.JSONObject,newRevision:Long?=null):Boolean {

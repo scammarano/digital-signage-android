@@ -56,6 +56,7 @@ object DeviceDebug {
         val module=when(mode){3->"TURNOS";4->"SPORTS";else->"--"}
         return "2Cam Digital Signage · APK ${BuildConfig.VERSION_NAME} DEBUG · API ${android.os.Build.VERSION.SDK_INT}\n" +
             "Modo: ${mode(mode)} · Origen: $origin · Módulo: $module\n" +
+            DeviceNetwork.label()+"\n" +
             "Control: ARRIBA×3 = Ajustes · ABAJO×3 = Sincronizar\n" +
             "Revisión: recibida r${received(c)} / guardada r${applied(c)} / efectiva r${effective(c)} (${mode(effectiveMode(c))})\n" +
             "Últ. sync $sync · $eventAt: ${lastEvent(c)}" +

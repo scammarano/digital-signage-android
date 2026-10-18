@@ -137,7 +137,9 @@ object AppUpdater {
                     Uri.parse("package:"+activity.packageName)))
                 return
             }
-            ApkInstaller.launch(ApkInstaller.intents(activity,file)){activity.startActivity(it)}
+            val intents=ApkInstaller.intents(activity,file)
+            DeviceLogs(activity).record("info","apk_installer_attempt","API ${Build.VERSION.SDK_INT}",intents.joinToString{"${it.action} · ${it.data?.scheme}"})
+            ApkInstaller.launch(intents){activity.startActivity(it)}
             DeviceLogs(activity).record("info","apk_installer_opened","Instalador solicitado; confirmación del usuario pendiente",info.optString("version"))
         }catch(e:Exception){
             DeviceLogs(activity).record("error","apk_installer_failed",e.javaClass.simpleName,e.message?.take(240)?:"Sin instalador")

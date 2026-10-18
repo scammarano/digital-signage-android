@@ -30,12 +30,16 @@ class OverlayService:Service(){
         @Volatile var lastShownAt=0L;private set
         @Volatile var lastHiddenAt=0L;private set
         @Volatile var visible=false;private set
+        @Volatile var running=false;private set
+        @Volatile var itemsShown=0L;private set
+        @Volatile var windowSlots=0L;private set
     }
     private val handler=Handler(Looper.getMainLooper());private val worker=Executors.newSingleThreadExecutor()
     private lateinit var settings:SettingsStore;private lateinit var cache:CacheManager
     private var wm:WindowManager?=null;private var current:View?=null;private var nextAdAt=0L;private var hideAt=0L
     private var previewUntil=0L
     private var dismiss:Runnable?=null
+    private var mediaDeck:MediaDeck?=null
     private val serviceGate by lazy{ServiceGate(this)}
     private var servicePollAt=0L
     @Volatile private var servicePollBusy=false
@@ -93,6 +97,7 @@ class OverlayService:Service(){
     }
     private val ticker=object:Runnable{override fun run(){try{pulse()}finally{handler.postDelayed(this,1000)}}}
     override fun onCreate(){super.onCreate();settings=SettingsStore(this);cache=CacheManager(this,settings)
+        running=true
         startForeground(91, AndroidCompat.notification(this, "signage_overlay", "Digital Signage Overlay",
             "Digital Signage activo", "Publicidad programada en segundo plano"))
         wm=getSystemService(Context.WINDOW_SERVICE) as WindowManager
@@ -101,12 +106,14 @@ class OverlayService:Service(){
     override fun onBind(intent:Intent?):IBinder?=null
     override fun onStartCommand(intent:Intent?,flags:Int,startId:Int):Int {
         if(intent?.action==ACTION_PREVIEW){
+            hide()
             nextAdAt=System.currentTimeMillis()
             previewUntil=nextAdAt+settings.overlayDurationSec*1000L+2000L
         }
         return START_STICKY
     }
     override fun onDestroy(){handler.removeCallbacks(ticker);hide();
+        running=false
         debugText?.let{try{wm?.removeView(it)}catch(_:Exception){}}
         debugText=null
         worker.shutdownNow();super.onDestroy()}
@@ -146,18 +153,11 @@ class OverlayService:Service(){
         val all=model.entries(settings,2);val images=ArrayList<JSONObject>()
         for(i in 0 until all.length()){val item=all.optJSONObject(i)?:continue;if(item.optString("mime").startsWith("image/"))images.add(item)}
         if(images.isEmpty()){nextAdAt=now+interval;return}
-        val item=images[index%images.size];index++
-        val duration=minOf(settings.overlayDurationSec.toLong()*1000L,MediaTiming.durationMs(item))
-        show(item,duration);nextAdAt=now+interval
+        show(images,settings.overlayDurationSec.toLong()*1000L)
     }
-    private fun show(item:JSONObject,duration:Long){
-        val file=cache.mediaFile(item.optString("sha256"));if(!file.isFile)return
+    private fun show(items:List<JSONObject>,duration:Long){
         try {
-            val opts=BitmapFactory.Options().apply{inJustDecodeBounds=true};BitmapFactory.decodeFile(file.path,opts)
-            var sample=1;while(opts.outWidth/sample>1200||opts.outHeight/sample>1200)sample*=2
-            val bitmap=BitmapFactory.decodeFile(file.path,BitmapFactory.Options().apply{inSampleSize=sample})?:return
-            val image=ImageView(this).apply{setImageBitmap(bitmap);scaleType=ImageView.ScaleType.FIT_CENTER}
-            val frame=FrameLayout(this).apply{setBackgroundColor(0xDD0A1424.toInt());addView(image,FrameLayout.LayoutParams(-1,-1));alpha=0f}
+            val frame=FrameLayout(this).apply{setBackgroundColor(0xDD0A1424.toInt());alpha=0f}
             val screen=resources.displayMetrics;val width=screen.widthPixels;val height=screen.heightPixels
             val layout=settings.overlayLayout
             val w=when(layout){
@@ -186,6 +186,16 @@ class OverlayService:Service(){
             frame.post{
                 if(current!==frame || frame.windowToken==null)return@post
                 lastShownAt=System.currentTimeMillis();hideAt=lastShownAt+duration
+                val deck=MediaDeck(frame,cache,false,true);mediaDeck=deck;windowSlots=0L
+                fun advance(){
+                    if(current!==frame)return
+                    val slot=index%items.size;val item=items[slot];index++
+                    deck.display(item,{advance()},{error->
+                        DeviceLogs(this).record("warn","overlay_media",error)
+                        handler.postDelayed({advance()},200L)
+                    },{itemsShown++;if(slot<63)windowSlots=windowSlots or (1L shl slot);DeviceLogs(this).record("info","overlay_item","Ítem ${slot+1}/${items.size}")})
+                }
+                advance()
                 frame.animate().translationX(0f).translationY(0f).alpha(1f).setDuration(minOf(600L,duration/2))
                     .setInterpolator(android.view.animation.DecelerateInterpolator()).start()
                 dismiss=Runnable{if(current===frame)hide(duration>=1000L)}.also{handler.postDelayed(it,duration)}
@@ -203,10 +213,12 @@ class OverlayService:Service(){
     private fun hide(animated:Boolean=false){
         dismiss?.let{handler.removeCallbacks(it)};dismiss=null
         val view=current?:return;current=null
+        val oldDeck=mediaDeck;mediaDeck=null
+        nextAdAt=System.currentTimeMillis()+settings.overlayIntervalSec.toLong()*1000L
         visible=false
         lastHiddenAt=System.currentTimeMillis()
         val manager=wm?:return
-        fun remove(){try{manager.removeView(view)}catch(_:Exception){}}
+        fun remove(){oldDeck?.release();try{manager.removeView(view)}catch(_:Exception){}}
         if(!animated){view.animate().cancel();remove();return}
         val offset=OverlayMotion.offset(settings.overlayLayout,view.width,view.height)
         view.animate().translationX(offset.first).translationY(offset.second).alpha(0f).setDuration(350).withEndAction{remove()}.start()

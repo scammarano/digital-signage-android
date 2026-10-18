@@ -1,5 +1,6 @@
 {
   "schema": 2,
+  "groups": ["General", "Cartelera", "Overlay", "Turnos", "Marcador deportivo", "Conexión Turnos / Marcador", "Diagnóstico", "Actualizaciones"],
   "modes": {
     "1": "Cartelera",
     "2": "Overlay",
@@ -199,7 +200,7 @@
     },
     {
       "key": "overlay_interval_sec",
-      "label": "Intervalo (segundos)",
+      "label": "Pausa entre apariciones (segundos)",
       "group": "Overlay",
       "default": 900,
       "type": "int",
@@ -208,7 +209,7 @@
     },
     {
       "key": "overlay_duration_sec",
-      "label": "Duración visible (segundos)",
+      "label": "Duración de la aparición de la playlist (segundos)",
       "group": "Overlay",
       "default": 12,
       "type": "int",
