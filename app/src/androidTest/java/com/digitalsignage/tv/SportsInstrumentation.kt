@@ -219,6 +219,11 @@ class SportsInstrumentation:Instrumentation(){
             check(Regex("data-tab-target='").findAll(page).count()==8)
             check(Regex("data-tab-panel='").findAll(page).count()==8)
             check(page.contains(DeviceNetwork.label())&&page.contains("formaction='/preview'"))
+            check(page.contains("name='local_mode_source'") &&
+                  page.contains("Automático · portal") &&
+                  page.contains("Publicidad compartida")){"LAN duplicated mode selector or media sources"}
+            check(Regex("name='enabled_modes' value='").containsMatchIn(page) &&
+                  !page.contains("name='mode_1'")){"LAN mode permission checks remain visible"}
             val script=Regex("<script>(.*?)</script>").find(page)!!.groupValues[1]
             val hash=android.util.Base64.encodeToString(java.security.MessageDigest.getInstance("SHA-256").digest(script.toByteArray()),android.util.Base64.NO_WRAP)
             check(page.contains("script-src 'sha256-$hash'")){"LAN tab script blocked by CSP"}
