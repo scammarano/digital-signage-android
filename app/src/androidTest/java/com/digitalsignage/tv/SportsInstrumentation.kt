@@ -36,6 +36,27 @@ class SportsInstrumentation:Instrumentation(){
             val raw=reader.readText();check(code in 200..299){"HTTP $code $raw"};return JSONObject(raw)
         }
     }
+
+    private fun exerciseBootLocalVeto(){
+        val settings=SettingsStore(targetContext)
+        val snapshot=settings.publicSnapshot()
+        val previousBlock=settings.localBootBlocked()
+        try {
+            check(settings.setBootAutoStartFromTv(false))
+            check(!settings.bootAutoStartEnabled()){"TV off must veto boot"}
+            check(settings.applySnapshot(JSONObject(settings.publicSnapshot().toString()).put("auto_start",true)))
+            check(!settings.bootAutoStartEnabled()){"Portal sync overrode explicit local off"}
+            check(settings.setBootAutoStartFromTv(true))
+            check(settings.bootAutoStartEnabled()){"TV on did not clear local veto"}
+            check(settings.applySnapshot(JSONObject(settings.publicSnapshot().toString()).put("auto_start",false)))
+            check(!settings.bootAutoStartEnabled()){"Portal disabled boot but effective status is on"}
+            println("BOOT_LOCAL_VETO_PASS manual_off_survives_portal_on portal_off_blocks_start")
+        } finally {
+            settings.setBootAutoStartFromTv(!previousBlock)
+            check(settings.applySnapshot(snapshot))
+        }
+    }
+
     private fun exercise(){
         val formats=JSONObject().put("revision",4).put("side_width_pct",35).put("bottom_height_pct",30)
         check(MediaFormats.percent(formats,"side")==35 && MediaFormats.percent(formats,"bottom")==30)
@@ -52,6 +73,7 @@ class SportsInstrumentation:Instrumentation(){
         exerciseMediaTiming()
         exercisePin()
         exerciseSettingsRemote()
+        exerciseBootLocalVeto()
         exerciseLanTabs()
         exerciseOverlay()
         exerciseInstaller()
