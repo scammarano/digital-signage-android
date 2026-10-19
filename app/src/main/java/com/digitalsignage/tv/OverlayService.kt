@@ -153,7 +153,9 @@ class OverlayService:Service(){
         if(current!=null){if(now>=hideAt)hide(true);return}
         // The current APK configuration owns Overlay policy independently of playlist layout.
         val interval=settings.overlayIntervalSec.toLong()*1000L
-        if(nextAdAt==0L)nextAdAt=now+interval
+        // First appearance after service start is a short, observable readiness
+        // check. The configured interval is the pause BETWEEN later windows.
+        if(nextAdAt==0L)nextAdAt=now+10000L
         if(now<nextAdAt)return
         val all=model.entries(settings,2);val images=ArrayList<JSONObject>()
         for(i in 0 until all.length()){val item=all.optJSONObject(i)?:continue;if(item.optString("mime").startsWith("image/"))images.add(item)}
