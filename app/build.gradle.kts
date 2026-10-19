@@ -1,6 +1,6 @@
 plugins { id("com.android.application"); id("org.jetbrains.kotlin.android") }
 android { namespace = "com.digitalsignage.tv"; compileSdk = 35
-    defaultConfig { applicationId = "com.digitalsignage.tv"; minSdk = 19; targetSdk = 35; versionCode = 421; versionName = "0.4.21-debug"; multiDexEnabled = true; testInstrumentationRunner = "com.digitalsignage.tv.SportsInstrumentation" }
+    defaultConfig { applicationId = "com.digitalsignage.tv"; minSdk = 19; targetSdk = 35; versionCode = 422; versionName = "0.4.22-debug"; multiDexEnabled = true; testInstrumentationRunner = "com.digitalsignage.tv.SportsInstrumentation" }
     buildFeatures { buildConfig = true }
     buildTypes { release { isMinifyEnabled = false } }
     compileOptions { sourceCompatibility = JavaVersion.VERSION_17; targetCompatibility = JavaVersion.VERSION_17; isCoreLibraryDesugaringEnabled = true }

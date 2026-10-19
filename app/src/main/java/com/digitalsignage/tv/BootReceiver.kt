@@ -14,7 +14,21 @@ class BootReceiver:BroadcastReceiver(){
             val logs=DeviceLogs(app)
             try{
                 val settings=SettingsStore(app);settings.prepareProductionStartup()
-                if(!settings.autoStart || settings.diagnosticMode || SecureToken(app).load()==null)return@Thread
+                val sinceBoot=android.os.SystemClock.elapsedRealtime()
+                logs.record("info","boot_received","Fire OS notificó arranque o actualización",
+                    "action=${intent?.action};since_boot_ms=$sinceBoot;auto_start=${settings.autoStart};local_block=${settings.localBootBlocked()};version=${BuildConfig.VERSION_NAME};sdk=${android.os.Build.VERSION.SDK_INT}")
+                if(!settings.bootAutoStartEnabled()){
+                    logs.record("info","boot_skipped","Arranque automático desactivado por portal o TV")
+                    return@Thread
+                }
+                if(settings.diagnosticMode){
+                    logs.record("info","boot_skipped","Modo diagnóstico manual activo")
+                    return@Thread
+                }
+                if(SecureToken(app).load()==null){
+                    logs.record("warn","boot_skipped","Equipo sin emparejar; no se inicia contenido")
+                    return@Thread
+                }
                 val model=CacheManager(app,settings).active()?.let{ManifestModel(it)}
                 val mode=StartupPolicy.mode(settings,model)
                 val error=ModeReadiness.error(settings.publicSnapshot(),model,mode)

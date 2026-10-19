@@ -11,6 +11,23 @@ class DeviceLogs(context:Context) {
     private val dir=File(context.filesDir,"diagnostics").apply{mkdirs()}
     private val file=File(dir,"queue.jsonl")
     private val state=context.getSharedPreferences("signage_diag_v1",Context.MODE_PRIVATE)
+    // Bounded cumulative archive, independent of the delivery queue. 4 x 2 MiB
+    // segments survive successful uploads, offline periods and application restarts.
+    private val archiveSegmentBytes=2_000_000L
+    private fun archiveFile(n:Int)=File(dir,"history-$n.jsonl")
+    private fun appendArchive(line:String) {
+        val active=archiveFile(0)
+        if(active.length()+line.toByteArray(Charsets.UTF_8).size>archiveSegmentBytes) {
+            archiveFile(3).delete()
+            for(n in 2 downTo 0) {
+                val old=archiveFile(n)
+                if(old.exists())old.renameTo(archiveFile(n+1))
+            }
+        }
+        archiveFile(0).appendText(line)
+    }
+    @Synchronized fun archiveBytes():Long=(0..3).map{archiveFile(it).length()}.sum()
+
     private fun safe(s:String,limit:Int):String=s
         .replace(Regex("(?i)Bearer\\s+[^\\s]+"),"Bearer [REDACTED]")
         .replace(Regex("(?i)(token|password|secret|pin)[=:]\\s*[^\\s,;]+"),"$1=[REDACTED]")
@@ -24,7 +41,9 @@ class DeviceLogs(context:Context) {
             if(file.length()>300000){
                 file.writeText(file.readLines().takeLast(350).joinToString("\n",postfix="\n"))
             }
-            file.appendText(event.toString()+"\n")
+            val line=event.toString()+"\n"
+            appendArchive(line)
+            file.appendText(line)
             if(level=="fatal")state.edit().putLong("last_fatal",System.currentTimeMillis()).commit()
         }catch(_:Throwable){}
     }
@@ -54,4 +73,33 @@ class DeviceLogs(context:Context) {
         }
         return ids.size
     }
+    /** Resend the retained history explicitly. Server de-duplicates by event ID.
+      * Acknowledgement NEVER deletes archive segments; only the delivery queue
+      * is drained by upload(). This is bounded retention, not infinite storage. */
+    fun uploadArchive(api:SignageApi,onProgress:(Int)->Unit={}):Int {
+        var confirmed=0
+        var batch=JSONArray()
+        fun sendBatch() {
+            if(batch.length()==0)return
+            val accepted=api.submitLogs(batch).optJSONArray("accepted")
+                ?:throw IllegalStateException("El portal no confirmó los eventos")
+            if(accepted.length()!=batch.length())throw IllegalStateException("Confirmación de logs incompleta")
+            confirmed+=accepted.length()
+            onProgress(confirmed)
+            batch=JSONArray()
+        }
+        for(n in 3 downTo 0) {
+            val segment=archiveFile(n)
+            if(!segment.exists())continue
+            segment.forEachLine { line ->
+                if(line.isNotBlank()) {
+                    try{batch.put(JSONObject(line))}catch(_:Exception){}
+                    if(batch.length()>=25)sendBatch()
+                }
+            }
+        }
+        sendBatch()
+        return confirmed
+    }
+
 }

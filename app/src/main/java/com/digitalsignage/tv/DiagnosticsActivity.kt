@@ -30,6 +30,21 @@ class DiagnosticsActivity:Activity() {
                 }catch(e:Exception){ui.post{status.text="No enviados: ${e.message}"}}
             }
         })
+        root.addView(ScreenStyles.label(this,
+            "Historial local conservado (máximo aproximado 8 MB): "+(logs.archiveBytes()/1024)+" KB. "+
+            "No se elimina al enviar; la cola pendiente se confirma por separado.",16f))
+        root.addView(ScreenStyles.button(this,"Enviar historial acumulado al portal"){
+            status.text="Enviando historial…"
+            worker.execute {
+                try{
+                    val secret=SecureToken(this).load()?:throw IllegalStateException("Vincula la pantalla primero")
+                    val count=logs.uploadArchive(SignageApi(settings.portalUrl,secret)){confirmed->
+                        if(confirmed%100==0)ui.post{status.text="Confirmados: $confirmed"}
+                    }
+                    ui.post{status.text="Historial enviado o ya existente en portal: $count eventos"}
+                }catch(e:Exception){ui.post{status.text="Historial pendiente: ${e.message}"}}
+            }
+        })
         root.addView(TextView(this).apply{
             setTextColor(ScreenStyles.FOREGROUND);textSize=12f;text=logs.summary()
         })

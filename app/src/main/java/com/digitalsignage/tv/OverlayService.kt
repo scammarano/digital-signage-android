@@ -112,7 +112,10 @@ class OverlayService:Service(){
         // Start only after the start intent has established preview policy. A ticker
         // queued in onCreate can otherwise stop a new preview in a non-Overlay mode.
         handler.removeCallbacks(ticker);handler.post(ticker)
-        return START_STICKY
+        DeviceLogs(this).record("info","overlay_service_start","Overlay iniciado",
+            "action=${intent?.action?:"normal"};since_boot_ms=${android.os.SystemClock.elapsedRealtime()}")
+        // Never resurrect an already disabled service on an unsolicited OS restart.
+        return START_NOT_STICKY
     }
     override fun onDestroy(){handler.removeCallbacks(ticker);hide();
         running=false

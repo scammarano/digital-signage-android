@@ -71,6 +71,13 @@ class SettingsStore(private val context: Context) {
     var autoStart: Boolean
         get() = p.getBoolean("auto_start", true)
         set(v) = p.edit().putBoolean("auto_start",v).apply()
+    /** Explicit local off vetoes a later portal refresh that enables auto_start.
+      * Re-enable from the TV to clear the local veto. Does not stop manual play. */
+    fun localBootBlocked():Boolean=p.getBoolean("boot_local_block",false)
+    fun bootAutoStartEnabled():Boolean=autoStart && !localBootBlocked()
+    fun setBootAutoStartFromTv(enabled:Boolean):Boolean=
+        p.edit().putBoolean("auto_start",enabled)
+            .putBoolean("boot_local_block",!enabled).commit()
     var splash: Boolean
         get() = p.getBoolean("splash", true)
         set(v) = p.edit().putBoolean("splash",v).apply()

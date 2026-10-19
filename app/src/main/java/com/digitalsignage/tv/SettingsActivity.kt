@@ -74,20 +74,41 @@ class SettingsActivity:Activity(){
         shell.addView(ScrollView(this).apply{isFillViewport=true;addView(centered)},LinearLayout.LayoutParams(-1,0,1f))
         fun action(title:String,run:()->Unit){root.addView(ScreenStyles.button(this,title,action=run).apply{minHeight=(52*dm.density).toInt();textSize=20f})}
         if(selectedTab=="General"){
-            root.addView(ScreenStyles.label(this,"Modo local: "+DeviceDebug.mode(if(config.manualMode>0)config.manualMode else config.primaryMode),19f))
-            listOf("Volver a automático (portal)" to 0,"Cartelera" to 1,"Overlay" to 2,"Turnos" to 3,"Marcador deportivo" to 4).forEach{(name,mode)->
-                action(name){val error=if(mode==0)null else config.activationError(mode)
-                    if(error!=null)AlertDialog.Builder(this).setMessage(error).setPositiveButton("Aceptar",null).show()
-                    else{config.manualMode=mode;showSettings()}
-                }
+            val manual=config.manualMode in 1..4
+            root.addView(ScreenStyles.label(this,"Control del modo",23f))
+            action(if(manual)"○ Automático · usar modo del portal" else "● Automático · portal activo"){
+                config.manualMode=0;DeviceLogs(this).record("info","mode_source","Control automático del portal");showSettings()
             }
+            action(if(manual)"● Manual local · "+DeviceDebug.mode(config.manualMode) else "○ Manual local · seleccionar modo"){
+                val names=arrayOf("Cartelera","Overlay","Turnos","Marcador deportivo")
+                AlertDialog.Builder(this).setTitle("Seleccionar único modo local")
+                    .setSingleChoiceItems(names,if(manual)config.manualMode-1 else -1){dialog,index->
+                        val mode=index+1
+                        val error=config.activationError(mode)
+                        if(error!=null)AlertDialog.Builder(this).setMessage(error).setPositiveButton("Aceptar",null).show()
+                        else{config.manualMode=mode;DeviceLogs(this).record("info","mode_source","Control manual", "mode=$mode");dialog.dismiss();showSettings()}
+                    }.setNegativeButton("Cancelar",null).show()
+            }
+            root.addView(ScreenStyles.label(this,"Modo configurado en portal: "+DeviceDebug.mode(config.primaryMode)+
+                "\nLos permisos de modo se administran en el portal; aquí eliges solo quién controla esta pantalla.",17f))
         }
         val snapshot=config.publicSnapshot()
-        for(def in config.schemaFields().filter{it.getString("group")==selectedTab}){
+        for(def in config.schemaFields().filter{it.getString("group")==selectedTab &&
+            !(selectedTab=="General" && it.getString("key") in setOf("enabled_modes","primary_mode"))}){
             val key=def.getString("key");val label=def.getString("label")
             fun save(value:Any){val next=config.validateSettings(config.publicSnapshot().put(key,value));config.requireActivationChange(next);check(config.applySnapshot(next))}
             when(def.getString("type")){
-                "bool"->toggle(label,snapshot.getBoolean(key)){try{save(it)}catch(e:Exception){android.widget.Toast.makeText(this,e.message,1).show();showSettings()}}
+                "bool"->toggle(if(key=="auto_start")"Iniciar al arrancar Fire OS" else label,
+                    if(key=="auto_start")config.bootAutoStartEnabled() else snapshot.getBoolean(key)){enabled->
+                    try {
+                        if(key=="auto_start"){
+                            check(config.setBootAutoStartFromTv(enabled))
+                            DeviceLogs(this).record("info","boot_setting",
+                                if(enabled)"Inicio automático autorizado desde TV" else "Inicio automático bloqueado desde TV")
+                        }else save(enabled)
+                    }catch(e:Exception){android.widget.Toast.makeText(this,e.message,1).show()}
+                    showSettings()
+                }
                 "mask"->for(mode in 1..4){val bit=1 shl(mode-1);toggle(DeviceDebug.mode(mode),snapshot.getInt(key) and bit!=0){enabled->
                     try{save(if(enabled)config.enabledModes or bit else config.enabledModes and bit.inv())}catch(e:Exception){android.widget.Toast.makeText(this,e.message,1).show()};showSettings()
                 }}
@@ -109,6 +130,8 @@ class SettingsActivity:Activity(){
                 else->field(label,snapshot.get(key).toString()){save(it.toInt());showSettings()}
             }
         }
+        if(selectedTab=="General")root.addView(ScreenStyles.label(this,
+            "Inicio automático: solo tras reiniciar Fire OS. Encender la TV sin reiniciar Fire no genera evento de arranque. Abrir 2Cam manualmente puede iniciar el modo elegido.",17f))
         if(selectedTab=="Overlay"){
             root.addView(ScreenStyles.label(this,"Cada aparición reproduce la lista con sus tiempos y transiciones durante toda la duración visible. Después espera el intervalo configurado. Solo imágenes.",18f))
             action("▶ Probar Overlay sobre otras aplicaciones"){
@@ -134,7 +157,7 @@ class SettingsActivity:Activity(){
             action("Iniciar panel web local durante 30 min"){
                 config.setLocalAdminEnabled(true);AndroidCompat.startServiceCompat(this,Intent(this,LocalAdminService::class.java).setAction(LocalAdminService.ACTION_START))
                 android.os.Handler(android.os.Looper.getMainLooper()).postDelayed({
-                    AlertDialog.Builder(this).setTitle("Panel web local").setMessage(DeviceNetwork.label()+"\n"+LocalAdminService.runningUrl+"\nCódigo temporal: "+LocalAdminService.pairingCode+"\n"+LocalAdminService.lastError).setPositiveButton("Aceptar",null).show()
+                    showLanAccessCard()
                 },700)
             }
             action("Cerrar administración LAN"){startService(Intent(this,LocalAdminService::class.java).setAction(LocalAdminService.ACTION_STOP))}
@@ -146,6 +169,30 @@ class SettingsActivity:Activity(){
         shell.addView(ScreenStyles.button(this,"Volver al reproductor"){finish()})
         setContentView(shell)
         tabs.getChildAt(groups.indexOf(selectedTab)).apply{requestFocus();post{bar.smoothScrollTo(left,0)}}
+    }
+    private fun showLanAccessCard(){
+        val content=ScreenStyles.column(this).apply{setPadding(36,24,36,28)}
+        fun line(value:String,sp:Float){
+            content.addView(ScreenStyles.label(this,value,sp).apply{
+                gravity=Gravity.CENTER;setPadding(12,12,12,12)
+            })
+        }
+        val ips=DeviceNetwork.addresses()
+        line("PANEL WEB LOCAL",34f)
+        line("IP PRINCIPAL",23f)
+        line(ips.firstOrNull()?:"Sin conexión IPv4",40f)
+        line("DIRECCIÓN PARA NAVEGADOR",22f)
+        line(LocalAdminService.runningUrl.ifBlank{"Iniciando panel local…"},30f)
+        line("CÓDIGO TEMPORAL",22f)
+        line(LocalAdminService.pairingCode.ifBlank{"No disponible"},48f)
+        if(ips.size>1)line("Otras IP: "+ips.drop(1).joinToString(" · "),18f)
+        if(LocalAdminService.lastError.isNotBlank())line("Estado: "+LocalAdminService.lastError,20f)
+        val dialog=AlertDialog.Builder(this)
+            .setView(ScrollView(this).apply{addView(content)})
+            .setPositiveButton("Cerrar",null).create()
+        dialog.show()
+        val metrics=resources.displayMetrics
+        dialog.window?.setLayout((metrics.widthPixels*0.90f).toInt(),(metrics.heightPixels*0.84f).toInt())
     }
     private fun fieldDialog(label:String,value:String,save:(String)->Unit){
         val edit=EditText(this).apply{setSingleLine(true);setText(value);textSize=24f;isFocusable=true;isFocusableInTouchMode=true;setSelectAllOnFocus(true);inputType=if(label.contains("HTTPS"))1 else 2;setPadding(24,20,24,20)}
