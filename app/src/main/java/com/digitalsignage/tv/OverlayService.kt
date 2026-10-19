@@ -128,12 +128,8 @@ class OverlayService:Service(){
         refreshDebugOverlay()
         pollDebugConfig()
         if(!AndroidCompat.canOverlay(this)){hide();stopSelf();return}
-        val model=cache.active()?.let{ManifestModel(it)}?:return
-        if(model.activeMode(settings)!=2 && System.currentTimeMillis()>=previewUntil){hide();stopSelf();return}
-        val readiness=ModeReadiness.error(settings.publicSnapshot(),model,2)
-        if(readiness!=null){
-            hide();DeviceDebug.record(this,DeviceLogs(this),"blocked",settings.remoteRevision,readiness)
-        }
+        // Sync must run even without a cached manifest, especially after first
+        // pairing / clean install. Otherwise a cold Overlay service never recovers.
         val now=System.currentTimeMillis()
         if(now-lastFetch>settings.syncMinutes*60000L&&!syncing){syncing=true;lastFetch=now
             worker.execute{
@@ -149,7 +145,13 @@ class OverlayService:Service(){
                 }catch(_:Exception){}finally{syncing=false}
             }
         }
-        if(readiness!=null)return
+        val model=cache.active()?.let{ManifestModel(it)}?:return
+        if(model.activeMode(settings)!=2 && now>=previewUntil){hide();stopSelf();return}
+        val readiness=ModeReadiness.error(settings.publicSnapshot(),model,2)
+        if(readiness!=null){
+            hide();DeviceDebug.record(this,DeviceLogs(this),"blocked",settings.remoteRevision,readiness)
+            return
+        }
         if(current!=null){if(now>=hideAt)hide(true);return}
         // The current APK configuration owns Overlay policy independently of playlist layout.
         val interval=settings.overlayIntervalSec.toLong()*1000L
