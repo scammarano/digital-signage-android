@@ -69,7 +69,7 @@ class DeviceConfigSync(
                 val rev=command.getLong("revision")
                 val pin=command.getString("pin")
                 settings.setPin(pin)
-                api.acknowledgePinCommand(rev)
+                check(api.acknowledgePinCommand(rev).optBoolean("applied",false)){"El portal no confirmó la revisión del PIN"}
                 audit("pin_applied",rev,"PIN administrativo aplicado desde portal")
             }
         }catch(e:PortalHttpException){
