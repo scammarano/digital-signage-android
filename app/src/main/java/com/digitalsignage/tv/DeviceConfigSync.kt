@@ -61,6 +61,22 @@ class DeviceConfigSync(
             .put("settings",reportSettings())
             .put("sha256",reply.optString("sha256")))
         if(changed)audit("reported",applied,"confirmación aceptada por portal")
+        // Applying a PIN is a separate privileged workflow: no PIN value in logs,
+        // snapshots, backups, telemetry, or config schema.
+        try {
+            val command=api.pendingPinCommand()
+            if(command.optBoolean("pending",false)){
+                val rev=command.getLong("revision")
+                val pin=command.getString("pin")
+                settings.setPin(pin)
+                api.acknowledgePinCommand(rev)
+                audit("pin_applied",rev,"PIN administrativo aplicado desde portal")
+            }
+        }catch(e:PortalHttpException){
+            // Older portals do not have this endpoint. Keep old APK/portal pairing
+            // interoperable while the operator installs the signed web upgrade.
+            if(e.status!=404)throw e
+        }
         return applied==wanted
     }
 }

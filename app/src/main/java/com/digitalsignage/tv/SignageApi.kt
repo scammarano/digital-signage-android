@@ -26,6 +26,10 @@ class SignageApi(private val baseUrl:String, private val token:String?) {
         return call("api-app-update.php?channel=$channel&sdk=$sdk")
     }
     fun desiredConfig()=call("api-device-config.php?op=desired")
+    /** PIN is a separate one-shot authenticated command, never part of common settings. */
+    fun pendingPinCommand()=call("api-device-pin.php?op=pending")
+    fun acknowledgePinCommand(revision:Long)=call("api-device-pin.php?op=applied",
+        JSONObject().put("revision",revision))
     fun reportConfig(data:JSONObject)=call("api-device-config.php?op=report",data)
     fun heartbeat(data:JSONObject)=call("api-device.php?op=heartbeat",data.put("local_ip",DeviceNetwork.addresses().firstOrNull()?:JSONObject.NULL))
     fun control():JSONObject=call("api-device-telemetry.php?op=control")
