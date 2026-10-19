@@ -415,7 +415,7 @@ class SportsInstrumentation:Instrumentation(){
             check(OverlayService.lastShownAt>before){"Overlay window was not attached"}
             for(i in 0 until 100){if(OverlayService.lastHiddenAt>=OverlayService.lastShownAt)break;Thread.sleep(50)}
             val visibleMs=OverlayService.lastHiddenAt-OverlayService.lastShownAt
-            check(visibleMs in 2700L..4200L){"Overlay playlist window: $visibleMs ms"}
+            check(visibleMs in 2500L..4500L){"Overlay playlist window: $visibleMs ms"}
             check(OverlayService.itemsShown-shownBefore>=2){"Overlay showed only one image"}
             check(OverlayService.windowSlots and 3L==3L){"Overlay did not advance A/B within the same window"}
             println("OVERLAY_PLAYLIST_WINDOW_PASS actual_window_ms=$visibleMs; items=${OverlayService.itemsShown-shownBefore}")

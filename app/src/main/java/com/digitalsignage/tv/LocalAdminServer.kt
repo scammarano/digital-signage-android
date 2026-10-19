@@ -134,7 +134,23 @@ class LocalAdminServer(private val context:Context,private val settings:Settings
             var group=""
             for(def in groupNames.flatMap{g->settings.schemaFields().filter{it.getString("group")==g}}){
                 val k=def.getString("key");val label=def.getString("label");val g=def.getString("group")
-                if(g!=group){section(g);group=g}
+                if(g!=group){
+                    section(g);group=g
+                    if(g=="General"){
+                        opts.append(select("local_mode_source","Quién controla el modo",
+                            settings.manualMode.toString(),
+                            listOf("0" to "Automático · portal","1" to "Manual · Cartelera",
+                                "2" to "Manual · Overlay","3" to "Manual · Overlay + Turnos",
+                                "4" to "Manual · Overlay + Marcador")))
+                        opts.append("<p>El portal determina el modo si eliges Automático. Si eliges Manual, la selección local manda hasta volver a automático.</p>")
+                    }
+                }
+                // Advanced permission masks and fallback mode are never a second
+                // operating-mode selector in LAN; retain their stored values.
+                if(g=="General" && k in setOf("enabled_modes","primary_mode")){
+                    opts.append("<input type=hidden name='$k' value='${html(snap.get(k).toString())}'>")
+                    continue
+                }
                 if((g=="Turnos" || g=="Marcador deportivo") &&
                     (def.getString("type")=="playlist" || k in setOf("queue_layout","scoreboard_layout",
                         "queue_ad_interval_sec","queue_ad_duration_sec","scoreboard_ad_interval_sec","scoreboard_ad_duration_sec"))){
@@ -185,8 +201,17 @@ class LocalAdminServer(private val context:Context,private val settings:Settings
                         else->o.put(k,params[k]?.toIntOrNull()?:-1)
                     }
                 }
-                settings.validateSettings(o);settings.requireActivationChange(o);settings.backupSnapshot("local-web-before-save")
-                if(!settings.applySnapshot(o))throw IllegalStateException("No se pudo guardar");respond(c,303,"","Location: /\r\n");return
+                val manual=params["local_mode_source"]?.toIntOrNull()?:-1
+                require(manual in 0..4){"Modo local inválido"}
+                settings.validateSettings(o);settings.requireActivationChange(o)
+                if(manual in 1..4)settings.activationError(manual,o)?.let{throw IllegalArgumentException(it)}
+                settings.backupSnapshot("local-web-before-save")
+                if(!settings.applySnapshot(o))throw IllegalStateException("No se pudo guardar")
+                settings.manualMode=manual
+                // The LAN panel is a local administrative action, so an explicit
+                // auto-start checkbox updates the same local veto as the TV UI.
+                check(settings.setBootAutoStartFromTv(o.getBoolean("auto_start")))
+                respond(c,303,"","Location: /\r\n");return
             }
             if(path=="/restore"){
                 val input=JSONObject(params["json"]?:"")
