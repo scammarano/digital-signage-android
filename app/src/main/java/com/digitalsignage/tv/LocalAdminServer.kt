@@ -196,7 +196,9 @@ class LocalAdminServer(private val context:Context,private val settings:Settings
                     val k=def.getString("key")
                     when(def.getString("type")){
                         "bool"->o.put(k,params[k]=="1")
-                        "mask"->{var modes=0;for(bit in listOf(1,2,4,8))if(params["mode_$bit"]=="1")modes=modes or bit;o.put(k,modes)}
+                        "mask"->{val legacyControls=listOf(1,2,4,8).any{params.containsKey("mode_$it")}
+                            if(!legacyControls && params.containsKey(k))o.put(k,params[k]?.toIntOrNull()?:-1)
+                            else {var modes=0;for(bit in listOf(1,2,4,8))if(params["mode_$bit"]=="1")modes=modes or bit;o.put(k,modes)}}
                         "enum"->o.put(k,if(def.get("default") is Int)params[k]?.toIntOrNull()?:-1 else params[k]?:"")
                         else->o.put(k,params[k]?.toIntOrNull()?:-1)
                     }
