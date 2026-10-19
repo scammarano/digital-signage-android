@@ -467,9 +467,10 @@ class MainActivity : Activity() {
     }
     private fun refreshLiveAdvertising(){
         if(activeMode !in 3..4 || settings.modeLayout(activeMode)!="fullscreen")return
-        val prefix=if(activeMode==4)"scoreboard" else "queue"
-        val interval=settings.settingInt(prefix+"_ad_interval_sec")*1000L
-        val duration=settings.settingInt(prefix+"_ad_duration_sec")*1000L
+        // In the operational modes, advertising follows the common Overlay
+        // appearance schedule, not duplicate queue/scoreboard timers.
+        val interval=settings.overlayIntervalSec*1000L
+        val duration=settings.overlayDurationSec*1000L
         val elapsed=System.currentTimeMillis()-liveAdCycleStartedAt
         stage?.visibility=if(entries.length()>0 && elapsed%(interval+duration)>=interval)View.VISIBLE else View.GONE
     }

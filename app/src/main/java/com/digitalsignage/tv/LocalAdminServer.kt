@@ -135,6 +135,12 @@ class LocalAdminServer(private val context:Context,private val settings:Settings
             for(def in groupNames.flatMap{g->settings.schemaFields().filter{it.getString("group")==g}}){
                 val k=def.getString("key");val label=def.getString("label");val g=def.getString("group")
                 if(g!=group){section(g);group=g}
+                if((g=="Turnos" || g=="Marcador deportivo") &&
+                    (def.getString("type")=="playlist" || k in setOf("queue_layout","scoreboard_layout",
+                        "queue_ad_interval_sec","queue_ad_duration_sec","scoreboard_ad_interval_sec","scoreboard_ad_duration_sec"))){
+                    opts.append("<input type=hidden name='$k' value='${html(snap.get(k).toString())}'>")
+                    continue
+                }
                 when(def.getString("type")){
                     "bool"->check(k,label)
                     "mask"->{for((bit,title) in listOf(1 to "Cartelera",2 to "Overlay",4 to "Turnos",8 to "Marcador deportivo")){
@@ -146,6 +152,7 @@ class LocalAdminServer(private val context:Context,private val settings:Settings
                 }
             }
             if(sectionOpen)opts.append("</section>")
+            opts.append("<p><strong>Publicidad compartida:</strong> las listas seleccionadas en Overlay se usan también en Turnos y Marcador. Sus pestañas solo configuran las funciones adicionales.</p>")
             opts.append("<p>Overlay reproduce la playlist completa por orden durante la ventana visible y después espera la pausa configurada. Cada imagen conserva su duración y transición.</p><p>${html(DeviceNetwork.label())} · ${html(address)}</p>")
             val content="<h2>2Cam Digital Signage · Panel local</h2><p>Configuración unificada por modo. Solo LAN; cierra en 30 minutos.</p><p>Formatos centrales: lateral ${settings.mediaFormatPercent("side")}% del ancho · inferior ${settings.mediaFormatPercent("bottom")}% del alto. Se administran en Medios.</p><form method=post action='/save'><input type=hidden name=csrf value='$csrf'>$opts<button>Guardar configuración local</button></form><h3>Respaldo</h3><a href='/backup'>Descargar JSON (sin credenciales)</a><form method=post action='/restore'><input type=hidden name=csrf value='$csrf'><textarea name=json rows=7 placeholder='Pega el contenido JSON del respaldo'></textarea><button>Restaurar JSON</button></form><form method=post action='/stop'><input type=hidden name=csrf value='$csrf'><button>Cerrar panel local</button></form>"
             respond(c,200,page(content),"", "text/html; charset=utf-8");return

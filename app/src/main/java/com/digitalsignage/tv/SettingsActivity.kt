@@ -92,9 +92,15 @@ class SettingsActivity:Activity(){
             root.addView(ScreenStyles.label(this,"Modo configurado en portal: "+DeviceDebug.mode(config.primaryMode)+
                 "\nLos permisos de modo se administran en el portal; aquí eliges solo quién controla esta pantalla.",17f))
         }
+        if(selectedTab=="Turnos" || selectedTab=="Marcador deportivo")root.addView(
+            ScreenStyles.label(this,"La publicidad utiliza las listas, el formato y las pausas de la pestaña Overlay. Aquí se configuran solo las funciones de "+selectedTab+".",17f))
         val snapshot=config.publicSnapshot()
         for(def in config.schemaFields().filter{it.getString("group")==selectedTab &&
-            !(selectedTab=="General" && it.getString("key") in setOf("enabled_modes","primary_mode"))}){
+            !(selectedTab=="General" && it.getString("key") in setOf("enabled_modes","primary_mode")) &&
+            !((selectedTab=="Turnos" || selectedTab=="Marcador deportivo") &&
+                (it.getString("type")=="playlist" || it.getString("key") in
+                    setOf("queue_layout","scoreboard_layout","queue_ad_interval_sec","queue_ad_duration_sec",
+                          "scoreboard_ad_interval_sec","scoreboard_ad_duration_sec")))}){
             val key=def.getString("key");val label=def.getString("label")
             fun save(value:Any){val next=config.validateSettings(config.publicSnapshot().put(key,value));config.requireActivationChange(next);check(config.applySnapshot(next))}
             when(def.getString("type")){

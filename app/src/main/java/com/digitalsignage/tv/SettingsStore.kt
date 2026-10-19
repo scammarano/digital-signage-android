@@ -207,8 +207,11 @@ class SettingsStore(private val context: Context) {
     }
     fun settingInt(k:String)=publicSnapshot().getInt(k)
     fun settingString(k:String)=publicSnapshot().getString(k)
-    fun modeLayout(mode:Int):String=when(mode){2->when(overlayLayout){"top"->"bottom";"left"->"side";else->overlayLayout};3->settingString("queue_layout");4->settingString("scoreboard_layout");else->"fullscreen"}
-    fun playlistId(mode:Int):Int=if(mode==1)settingInt("signage_playlist_id") else settingInt((when(mode){2->"overlay";3->"queue";else->"scoreboard"})+"_playlist_"+modeLayout(mode))
+    /** Overlay is the sole advertising source for Overlay, Turnos and Sports.
+      * Operational engines remain distinct, but public media assignments do not. */
+    fun modeLayout(mode:Int):String=if(mode in 2..4)when(overlayLayout){"top"->"bottom";"left"->"side";else->overlayLayout} else "fullscreen"
+    fun playlistId(mode:Int):Int=if(mode==1)settingInt("signage_playlist_id")
+        else if(mode in 2..4)settingInt("overlay_playlist_"+modeLayout(mode)) else 0
     var overlayIntervalSec:Int
         get()=p.getInt("overlay_interval_sec",900).coerceIn(60,86400)
         set(v){require(v in 60..86400);p.edit().putInt("overlay_interval_sec",v).apply()}
