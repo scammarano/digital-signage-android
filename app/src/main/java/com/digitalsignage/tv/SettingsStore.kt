@@ -260,6 +260,8 @@ class SettingsStore(private val context: Context) {
     fun validateSettings(j:org.json.JSONObject):org.json.JSONObject {
         val full=publicSnapshot();val allowed=schemaFields().map{it.getString("key")}.toSet()
         val migrated=migrateV1(j);val keys=migrated.keys();while(keys.hasNext()){val k=keys.next();require(k in allowed){"Parámetro desconocido: $k"};full.put(k,migrated.get(k))}
+        // Historical masks may be zero; restore both core modes before range checks.
+        full.put("enabled_modes",full.optInt("enabled_modes",15) or 3)
         for(f in schemaFields()) {val k=f.getString("key");val v=full.get(k)
             when(f.getString("type")) {
                 "bool"->require(v is Boolean){"Tipo inválido: $k"}
