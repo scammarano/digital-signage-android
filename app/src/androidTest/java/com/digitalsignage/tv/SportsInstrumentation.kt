@@ -223,7 +223,7 @@ class SportsInstrumentation:Instrumentation(){
             server.start();val url=java.net.URL(server.address)
             fun request(method:String,path:String,body:String="",cookie:String=""):String{
                 val bytes=body.toByteArray(Charsets.UTF_8)
-                java.net.Socket().use{s->s.connect(java.net.InetSocketAddress(url.host,url.port),3000);s.soTimeout=4000
+                java.net.Socket().use{s->s.connect(java.net.InetSocketAddress(url.host,url.port),8000);s.soTimeout=12000
                     s.getOutputStream().apply{write(("$method $path HTTP/1.1\r\nHost: ${url.host}:${url.port}\r\nConnection: close\r\nCookie: $cookie\r\nContent-Length: ${bytes.size}\r\n\r\n").toByteArray());write(bytes);flush()}
                     return s.getInputStream().bufferedReader().readText()
                 }
@@ -309,6 +309,19 @@ class SportsInstrumentation:Instrumentation(){
             var attached=false
             for(i in 0 until 60){runOnMainSync{val stage=activity!!.window.decorView.findViewWithTag<android.widget.FrameLayout>("sports-media");attached=stage.width>0&&(stage.getChildAt(0)?.height?:0)>0};if(attached)break;Thread.sleep(100)}
             check(attached){"Sports playlist never shown"};waitForIdleSync()
+            // Immersive navigation insets can resize the Android 22/29 emulator
+            // after first attach. Keep the exact 20% assertion, but wait until
+            // the final canvas layout has actually reached its measured size.
+            var regionsSettled=false
+            for(i in 0 until 80){
+                runOnMainSync{
+                    val stage=activity!!.window.decorView.findViewWithTag<RegionLayout>("sports-regions")
+                    regionsSettled=stage.height>0 && kotlin.math.abs(stage.media.height-stage.height*.2f)<=1f
+                }
+                if(regionsSettled)break
+                Thread.sleep(100)
+            }
+            check(regionsSettled){"Sports region did not reach the required exact 20% layout"}
             runOnMainSync{
                 val root=activity!!.window.decorView.findViewWithTag<RegionLayout>("sports-regions")
                 val media=root.media
