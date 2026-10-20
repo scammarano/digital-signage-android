@@ -208,7 +208,11 @@ class SettingsActivity:Activity(){
             }
             action("Cerrar administración LAN"){startService(Intent(this,LocalAdminService::class.java).setAction(LocalAdminService.ACTION_STOP))}
             action("Autorizar superposición Android"){if(android.os.Build.VERSION.SDK_INT>=23)try{startActivity(Intent(Settings.ACTION_MANAGE_OVERLAY_PERMISSION,android.net.Uri.parse("package:$packageName")))}catch(_:Exception){}else android.widget.Toast.makeText(this,"Permiso administrado por Fire OS",1).show()}
-            action("Cambiar PIN"){fieldDialog("Nuevo PIN de 6 o más dígitos",""){config.setPin(it)}}
+            if(config.remotePinRevision()>0L)
+                action("Cambiar PIN · administrado por SUPERADMIN"){
+                    android.widget.Toast.makeText(this,"Cambia el PIN desde el portal SUPERADMIN",android.widget.Toast.LENGTH_LONG).show()
+                }
+            else action("Cambiar PIN local"){fieldDialog("Nuevo PIN de 6 o más dígitos",""){config.setPin(it)}}
             action("Respaldar configuración local"){config.backupSnapshot("manual-from-tv");android.widget.Toast.makeText(this,"Respaldo sin PIN ni token creado",1).show()}
             action("Desvincular dispositivo"){AlertDialog.Builder(this).setMessage("¿Desvincular esta pantalla?").setNegativeButton("Cancelar",null).setPositiveButton("Desvincular"){_,_->SecureToken(this).clear();stopService(Intent(this,OverlayService::class.java));finish()}.show()}
         }
