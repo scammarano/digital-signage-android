@@ -124,6 +124,24 @@ class SettingsStore(private val context: Context) {
     }
     private val pinSecret by lazy {SecureToken(context,"admin_pin_v2")}
     fun hasPin() = p.contains("pin_mac_v2") || p.contains("pin_hash")
+    fun remotePinRevision():Long=p.getLong("remote_pin_revision",0L)
+    fun setRemotePinRevision(revision:Long){
+        require(revision>0L)
+        check(p.edit().putLong("remote_pin_revision",revision).commit())
+    }
+    /** On switching to a different portal screen, never carry its prior PIN. */
+    fun onPairedDevice(deviceId:Int) {
+        require(deviceId>0)
+        val previous=p.getInt("paired_device_id",0)
+        val edit=p.edit().putInt("paired_device_id",deviceId)
+        if(previous!=0 && previous!=deviceId){
+            edit.remove("pin_mac_v2").remove("pin_salt_v2")
+                .remove("pin_hash").remove("pin_salt")
+                .remove("pin_locked_until").remove("pin_failures")
+                .remove("remote_pin_revision")
+        }
+        check(edit.commit())
+    }
     @Synchronized fun verifyPin(input:String):Boolean {
         if(!hasPin())return false
         val now=System.currentTimeMillis()
