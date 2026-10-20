@@ -88,8 +88,8 @@ class SettingsStore(private val context: Context) {
         get() = p.getBoolean("offline_playback",p.getBoolean("offline",true))
         set(v) = p.edit().putBoolean("offline_playback",v).apply()
     var enabledModes: Int
-        get() = p.getInt("enabled_modes",15) and 15
-        set(v) = p.edit().putInt("enabled_modes",v and 15).apply()
+        get() = (p.getInt("enabled_modes",15) and 15) or 3
+        set(v) = p.edit().putInt("enabled_modes",(v and 15) or 3).apply()
     var primaryMode:Int
         get()=p.getInt("primary_mode",1).coerceIn(1,4)
         set(v){require(v in 1..4);p.edit().putInt("primary_mode",v).apply()}
@@ -124,6 +124,24 @@ class SettingsStore(private val context: Context) {
     }
     private val pinSecret by lazy {SecureToken(context,"admin_pin_v2")}
     fun hasPin() = p.contains("pin_mac_v2") || p.contains("pin_hash")
+    fun remotePinRevision():Long=p.getLong("remote_pin_revision",0L)
+    fun setRemotePinRevision(revision:Long){
+        require(revision>0L)
+        check(p.edit().putLong("remote_pin_revision",revision).commit())
+    }
+    /** On switching to a different portal screen, never carry its prior PIN. */
+    fun onPairedDevice(deviceId:Int) {
+        require(deviceId>0)
+        val previous=p.getInt("paired_device_id",0)
+        val edit=p.edit().putInt("paired_device_id",deviceId)
+        if(previous!=0 && previous!=deviceId){
+            edit.remove("pin_mac_v2").remove("pin_salt_v2")
+                .remove("pin_hash").remove("pin_salt")
+                .remove("pin_locked_until").remove("pin_failures")
+                .remove("remote_pin_revision")
+        }
+        check(edit.commit())
+    }
     @Synchronized fun verifyPin(input:String):Boolean {
         if(!hasPin())return false
         val now=System.currentTimeMillis()
@@ -178,6 +196,7 @@ class SettingsStore(private val context: Context) {
                 "debug_hud_enabled"->debugHudEnabled
                 "offline_playback"->offlinePlayback
                 "update_channel"->updateChannel
+                "enabled_modes"->enabledModes
                 else->when(d){is Boolean->p.getBoolean(k,d);is Int->p.getInt(k,d);else->p.getString(k,d.toString())?:d.toString()}
             };put(k,value)
         }
@@ -241,6 +260,8 @@ class SettingsStore(private val context: Context) {
     fun validateSettings(j:org.json.JSONObject):org.json.JSONObject {
         val full=publicSnapshot();val allowed=schemaFields().map{it.getString("key")}.toSet()
         val migrated=migrateV1(j);val keys=migrated.keys();while(keys.hasNext()){val k=keys.next();require(k in allowed){"Parámetro desconocido: $k"};full.put(k,migrated.get(k))}
+        // Historical masks may be zero; restore both core modes before range checks.
+        full.put("enabled_modes",full.optInt("enabled_modes",15) or 3)
         for(f in schemaFields()) {val k=f.getString("key");val v=full.get(k)
             when(f.getString("type")) {
                 "bool"->require(v is Boolean){"Tipo inválido: $k"}
@@ -248,7 +269,8 @@ class SettingsStore(private val context: Context) {
                 else->require(v is Int && v in f.getInt("min")..f.getInt("max")){"Fuera de rango: $k"}
             }
         }
-        require(full.getInt("enabled_modes") and (1 shl (full.getInt("primary_mode")-1))!=0){"El modo principal debe estar habilitado"}
+        full.put("enabled_modes",full.getInt("enabled_modes") or 3)
+        require(full.getInt("enabled_modes") and (1 shl (full.getInt("primary_mode")-1))!=0){"El módulo principal seleccionado no está habilitado"}
         return full
     }
     @Synchronized fun applySnapshot(snapshot:org.json.JSONObject,newRevision:Long?=null):Boolean {

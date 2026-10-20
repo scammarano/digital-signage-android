@@ -13,6 +13,9 @@ class DeviceConfigSync(
     private val audit:(String,Long,String)->Unit={_,_,_->}
 ){
     fun poll():Boolean {
+        // PIN delivery cannot depend on the public settings revision.
+        try { DevicePinSync(settings,api,audit).poll() }
+        catch(e:Exception){audit("pin_remote_error",0L,e.javaClass.simpleName)}
         val reply=api.desiredConfig()
         if(reply.optInt("schema") !in 1..2)throw IllegalStateException("Esquema de configuración no soportado")
         val wanted=reply.getLong("revision")
@@ -61,22 +64,6 @@ class DeviceConfigSync(
             .put("settings",reportSettings())
             .put("sha256",reply.optString("sha256")))
         if(changed)audit("reported",applied,"confirmación aceptada por portal")
-        // Applying a PIN is a separate privileged workflow: no PIN value in logs,
-        // snapshots, backups, telemetry, or config schema.
-        try {
-            val command=api.pendingPinCommand()
-            if(command.optBoolean("pending",false)){
-                val rev=command.getLong("revision")
-                val pin=command.getString("pin")
-                settings.setPin(pin)
-                check(api.acknowledgePinCommand(rev).optBoolean("applied",false)){"El portal no confirmó la revisión del PIN"}
-                audit("pin_applied",rev,"PIN administrativo aplicado desde portal")
-            }
-        }catch(e:PortalHttpException){
-            // Older portals do not have this endpoint. Keep old APK/portal pairing
-            // interoperable while the operator installs the signed web upgrade.
-            if(e.status!=404)throw e
-        }
         return applied==wanted
     }
 }

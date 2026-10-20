@@ -21,22 +21,43 @@ class BootReceiver:BroadcastReceiver(){
                     logs.record("info","boot_skipped","Arranque automático desactivado por portal o TV")
                     return@Thread
                 }
+                logs.record("info","boot_allowed","Inicio autorizado","auto_start=true;local_block=false")
                 if(settings.diagnosticMode){
                     logs.record("info","boot_skipped","Modo diagnóstico manual activo")
                     return@Thread
                 }
                 if(SecureToken(app).load()==null){
-                    logs.record("warn","boot_skipped","Equipo sin emparejar; no se inicia contenido")
+                    logs.record("warn","pairing_required","Arranque sin token; abriendo emparejamiento")
+                    app.startActivity(Intent(app,MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
                     return@Thread
                 }
                 val model=CacheManager(app,settings).active()?.let{ManifestModel(it)}
                 val mode=StartupPolicy.mode(settings,model)
+                logs.record("info","boot_token_found","Token local disponible",
+                    "mode=$mode;cache_ready=${model!=null};manual_mode=${settings.manualMode}")
+                if(model==null){
+                    // Fresh install must start the synchronizing player instead of
+                    // returning from the receiver. The player owns retries and diagnostics.
+                    logs.record("info","boot_sync_started","Caché vacía; iniciando sincronización")
+                    app.startActivity(Intent(app,MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                    return@Thread
+                }
+                logs.record("info","boot_manifest_ready","Catálogo local disponible","mode=$mode")
                 val error=ModeReadiness.error(settings.publicSnapshot(),model,mode)
-                if(error!=null){notify(app,"Inicio pendiente",error);logs.record("warn","boot_blocked",error);return@Thread}
+                if(error!=null){
+                    logs.record("warn","boot_mode_pending",error,"mode=$mode")
+                    // Content/entitlements may have changed at the portal.
+                    // Allow an authenticated sync before treating cached data as final.
+                    app.startActivity(Intent(app,MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                    return@Thread
+                }
+                logs.record("info","boot_mode_ready","Modo validado","mode=$mode")
                 if(StartupPolicy.background(mode)){
                     if(!AndroidCompat.canOverlay(app)){
                         notify(app,"Overlay bloqueado","Abre Ajustes para autorizar la superposición")
-                        logs.record("warn","boot_blocked","Falta permiso Overlay");return@Thread
+                        logs.record("warn","overlay_permission_missing","Falta permiso Overlay")
+                        app.startActivity(Intent(app,MainActivity::class.java).addFlags(Intent.FLAG_ACTIVITY_NEW_TASK))
+                        return@Thread
                     }
                     AndroidCompat.startServiceCompat(app,Intent(app,OverlayService::class.java))
                     logs.record("info","boot_overlay","Servicio Overlay iniciado sin abrir el reproductor")

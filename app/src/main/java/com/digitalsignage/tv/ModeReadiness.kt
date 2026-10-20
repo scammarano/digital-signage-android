@@ -12,7 +12,11 @@ object ModeReadiness {
         config.getInt("overlay_playlist_"+layout(config,mode))
     fun error(config:JSONObject,model:ManifestModel?,mode:Int,atRuntime:Boolean=false):String? {
         if(mode !in 1..4)return "Modo inválido"
-        if(config.getInt("enabled_modes") and (1 shl (mode-1))==0)return "Este modo está deshabilitado"
+        // Cartelera/Overlay are base capabilities. Only operational modules
+        // require additional entitlement; historic mode bits cannot block them.
+        if(mode>=3 && config.optInt("enabled_modes",15) and (1 shl (mode-1))==0)
+            return if(mode==3)"El módulo Turnos no está habilitado para esta pantalla"
+                   else "El módulo Marcador deportivo no está habilitado para esta pantalla"
         val name=DeviceDebug.mode(mode)
         if(model==null)return "$name: sincroniza el catálogo y asigna una playlist compatible antes de activar"
         val id=playlist(config,mode)
