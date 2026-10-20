@@ -291,9 +291,11 @@ class MainActivity : Activity() {
                     logs.record("info","pairing","Intentando vinculación")
                     val reply=SignageApi(settings.portalUrl,null).pair(entered)
                     val pairedToken=reply.getString("token")
+                    // Remove a previous screen's local PIN before activating the
+                    // newly issued bearer; a crash must not leave mixed identities.
+                    settings.onPairedDevice(reply.getInt("device_id"))
                     token.save(pairedToken)
                     try {
-                        settings.onPairedDevice(reply.getInt("device_id"))
                         // The PIN has an independent endpoint: fetch it immediately
                         // after pairing, without waiting for the first config poll.
                         DevicePinSync(settings,SignageApi(settings.portalUrl,pairedToken)){event,revision,detail->
