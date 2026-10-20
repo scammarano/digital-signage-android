@@ -19,7 +19,47 @@ class SettingsActivity:Activity(){
     private val authWorker=java.util.concurrent.Executors.newSingleThreadExecutor()
     override fun onDestroy(){authWorker.shutdownNow();super.onDestroy()}
     override fun onCreate(savedInstanceState:Bundle?){super.onCreate(savedInstanceState);config=SettingsStore(this)
-        if(config.hasPin())askPin(false)else askPin(true)
+        // A paired screen is owned by its portal administrator. Do not offer a
+        // local "Create PIN" prompt before checking remote policy.
+        if(SecureToken(this).load()!=null)checkPortalPin()
+        else if(config.hasPin())askPin(false)else askPin(true)
+    }
+    private fun checkPortalPin(){
+        val progress=AlertDialog.Builder(this)
+            .setTitle("Comprobando PIN administrativo")
+            .setMessage("Consultando la asignación de esta pantalla en el portal…")
+            .setCancelable(false).setNegativeButton("Cancelar"){_,_->finish()}.create()
+        progress.show()
+        authWorker.execute{
+            var failure:String?=null
+            try {
+                val token=SecureToken(this).load()
+                    ?:throw IllegalStateException("La pantalla no está emparejada")
+                DevicePinSync(config,SignageApi(config.portalUrl,token)){event,revision,detail->
+                    DeviceLogs(this).record("info",event,detail,"pin_revision=$revision")
+                }.poll()
+            }catch(e:Exception){
+                failure=e.javaClass.simpleName
+                DeviceLogs(this).record("warn","pin_remote_check_failed",
+                    "No se pudo consultar el PIN remoto",e.javaClass.simpleName)
+            }
+            runOnUiThread{
+                if(isFinishing || isDestroyed)return@runOnUiThread
+                progress.dismiss()
+                if(config.hasPin()){
+                    if(failure!=null)android.widget.Toast.makeText(this,
+                        "Sin conexión con el PIN remoto; verificando PIN local",android.widget.Toast.LENGTH_LONG).show()
+                    askPin(false)
+                }else{
+                    AlertDialog.Builder(this)
+                        .setTitle("PIN administrado desde el portal")
+                        .setMessage("No hay un PIN local confirmado para esta pantalla. Conecta el dispositivo y asigna un PIN desde SUPERADMIN. No se permite crear uno desde la TV emparejada. Si no hay red, solicita recuperación autorizada al administrador.")
+                        .setPositiveButton("Reintentar"){_,_->checkPortalPin()}
+                        .setNegativeButton("Salir"){_,_->finish()}
+                        .setCancelable(false).show()
+                }
+            }
+        }
     }
     private fun askPin(create:Boolean){
         val field=EditText(this).apply{hint=if(create)"Nuevo PIN de al menos 6 dígitos" else "PIN administrativo";inputType=2}
