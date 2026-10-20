@@ -116,7 +116,10 @@ jobs:
             adb shell settings put secure install_non_market_apps 1
             if [ "${{ matrix.api }}" -ge 26 ]; then adb shell appops set com.digitalsignage.tv REQUEST_INSTALL_PACKAGES allow; fi
             if [ "${{ matrix.api }}" -ge 23 ]; then adb shell appops set com.digitalsignage.tv SYSTEM_ALERT_WINDOW allow; fi
+            adb logcat -c
             adb shell am instrument -w com.digitalsignage.tv.test/com.digitalsignage.tv.SportsInstrumentation | tee /tmp/fire-sports-test.txt
+            adb logcat -d -v threadtime > /tmp/fire-android-logcat.txt
+            grep -E 'FATAL EXCEPTION|AndroidRuntime|SPORTS_FIRE_DIRECT_FAIL' /tmp/fire-android-logcat.txt | tail -50 || true
             adb exec-out run-as com.digitalsignage.tv cat files/sports-region.png > /tmp/fire-sports-region.png
             grep -q SPORTS_FIRE_DIRECT_PASS /tmp/fire-sports-test.txt
       - uses: actions/upload-artifact@v4
@@ -126,6 +129,7 @@ jobs:
           path: |
             sports-core/build/reports/tests/test/
             /tmp/fire-sports-test.txt
+            /tmp/fire-android-logcat.txt
             /tmp/fire-apk-metadata.txt
             /tmp/fire-sports-region.png
           if-no-files-found: ignore
