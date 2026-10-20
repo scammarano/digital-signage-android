@@ -2,7 +2,7 @@ name: Build Android TV debug APK
 on:
   workflow_dispatch:
   push:
-    branches: [main, fix/p6-pin-overlay-boot-20261019]
+    branches: [main, fix/p6-pin-overlay-boot-20261019, fix/p7-p5-permanent-signing-20261020]
   pull_request:
     branches: [main, feat/boot-diagnostics-v0422]
 jobs:
@@ -54,10 +54,10 @@ jobs:
           grep -q "sdkVersion:'19'" app/build/outputs/apk/debug/apk-metadata.txt
           "$ANDROID_HOME/build-tools/35.0.0/apksigner" verify --verbose --min-sdk-version 19 "$APK"
           sha256sum "$APK" | tee app/build/outputs/apk/debug/SHA256SUMS.txt
-      - name: Upload signed development build artifact
+      - name: Upload non-upgradable test-signed candidate
         uses: actions/upload-artifact@v4
         with:
-          name: 2Cam-Digital-Signage-UNSIGNED-CANDIDATE
+          name: 2Cam-Digital-Signage-TEST-SIGNED-NOT-FOR-DEVICE-UPGRADE
           path: |
             app/build/outputs/apk/debug/app-debug.apk
             app/build/outputs/apk/debug/apk-metadata.txt
