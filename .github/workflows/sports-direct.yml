@@ -1,7 +1,7 @@
 name: Fire Sports direct LAN APK
 on:
   push:
-    branches: ['feat/sports-direct-lan', 'feat/config-ack-debug-v0411', 'feat/player-playlists-remote-v0412', 'feat/four-modes-parity-v0413', 'feat/boot-diagnostics-v0422', 'fix/p6-pin-overlay-boot-20261019']
+    branches: ['feat/sports-direct-lan', 'feat/config-ack-debug-v0411', 'feat/player-playlists-remote-v0412', 'feat/four-modes-parity-v0413', 'feat/boot-diagnostics-v0422', 'fix/p6-pin-overlay-boot-20261019', 'fix/p7-p5-permanent-signing-20261020']
   workflow_dispatch:
 permissions:
   contents: read
