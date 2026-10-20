@@ -27,7 +27,7 @@ class SignageApi(private val baseUrl:String, private val token:String?) {
     }
     fun desiredConfig()=call("api-device-config.php?op=desired")
     /** PIN is a separate one-shot authenticated command, never part of common settings. */
-    fun pendingPinCommand()=call("api-device-pin.php?op=pending")
+    fun pendingPinCommand()=call("api-device-pin.php?op=pending",connectTimeoutMs=6000,readTimeoutMs=8000)
     fun acknowledgePinCommand(revision:Long)=call("api-device-pin.php?op=applied",
         JSONObject().put("revision",revision))
     fun reportConfig(data:JSONObject)=call("api-device-config.php?op=report",data)
@@ -35,12 +35,12 @@ class SignageApi(private val baseUrl:String, private val token:String?) {
     fun control():JSONObject=call("api-device-telemetry.php?op=control")
     fun acknowledgeControl(revision:Long):JSONObject=call("api-device-telemetry.php?op=ack",JSONObject().put("revision",revision))
     fun submitLogs(events:org.json.JSONArray):JSONObject=call("api-device-telemetry.php?op=logs",JSONObject().put("events",events))
-    private fun call(path:String,payload:JSONObject?=null):JSONObject {
+    private fun call(path:String,payload:JSONObject?=null,connectTimeoutMs:Int=15000,readTimeoutMs:Int=20000):JSONObject {
         val url=URL(baseUrl+path)
         val conn=url.openConnection() as HttpsURLConnection
         LegacyTls.configure(conn)
         try {
-            conn.instanceFollowRedirects=false;conn.connectTimeout=15000;conn.readTimeout=20000
+            conn.instanceFollowRedirects=false;conn.connectTimeout=connectTimeoutMs;conn.readTimeout=readTimeoutMs
             conn.setRequestProperty("Accept","application/json")
             conn.setRequestProperty("Cache-Control","no-store")
             if(token!=null)conn.setRequestProperty("Authorization","Bearer $token")
