@@ -161,7 +161,13 @@ class OverlayService:Service(){
         if(now<nextAdAt)return
         val all=model.entries(settings,2);val images=ArrayList<JSONObject>()
         for(i in 0 until all.length()){val item=all.optJSONObject(i)?:continue;if(item.optString("mime").startsWith("image/"))images.add(item)}
-        if(images.isEmpty()){nextAdAt=now+interval;return}
+        if(images.isEmpty()){
+            // Do not start the 900-second advertising pause while there is
+            // nothing to display. The first valid image must show immediately
+            // after sync, even when the cache was initially empty.
+            nextAdAt=0L
+            return
+        }
         show(images,settings.overlayDurationSec.toLong()*1000L)
     }
     private fun show(items:List<JSONObject>,duration:Long){
