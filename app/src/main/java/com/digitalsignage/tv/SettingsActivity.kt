@@ -19,7 +19,33 @@ class SettingsActivity:Activity(){
     private val authWorker=java.util.concurrent.Executors.newSingleThreadExecutor()
     override fun onDestroy(){authWorker.shutdownNow();super.onDestroy()}
     override fun onCreate(savedInstanceState:Bundle?){super.onCreate(savedInstanceState);config=SettingsStore(this)
-        if(config.hasPin())askPin(false)else askPin(true)
+        if(config.hasPin())askPin(false)else resolveFirstPin()
+    }
+    private fun resolveFirstPin(){
+        val secret=SecureToken(this).load()
+        if(secret==null){showPinChoice("Empareja la pantalla con el portal antes de crear el PIN. Si lo asignaste en SUPERADMIN, se descargará al vincular.");return}
+        setContentView(ScreenStyles.label(this,"Consultando PIN administrativo del portal…",24f))
+        authWorker.execute{
+            val result=try{
+                DeviceConfigSync(config,SignageApi(config.portalUrl,secret)).syncAdminPin()
+                null
+            }catch(e:Exception){e.message?:"Sin conexión con el portal"}
+            runOnUiThread{
+                if(isFinishing||isDestroyed)return@runOnUiThread
+                if(config.hasPin())askPin(false)
+                else showPinChoice(if(result==null)
+                    "No hay una orden de PIN pendiente para esta pantalla. Asígnalo en SUPERADMIN y vuelve a consultar."
+                    else "No se pudo consultar el PIN del portal: $result. No crearemos un PIN diferente automáticamente.")
+            }
+        }
+    }
+    private fun showPinChoice(message:String){
+        AlertDialog.Builder(this).setTitle("PIN administrativo desde portal")
+            .setMessage(message)
+            .setPositiveButton("Reintentar"){_,_->resolveFirstPin()}
+            .setNeutralButton("Crear PIN local"){_,_->askPin(true)}
+            .setNegativeButton("Cerrar"){_,_->finish()}
+            .setCancelable(false).show()
     }
     private fun askPin(create:Boolean){
         val field=EditText(this).apply{hint=if(create)"Nuevo PIN de al menos 6 dígitos" else "PIN administrativo";inputType=2}

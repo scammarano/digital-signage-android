@@ -12,7 +12,8 @@ object ModeReadiness {
         config.getInt("overlay_playlist_"+layout(config,mode))
     fun error(config:JSONObject,model:ManifestModel?,mode:Int,atRuntime:Boolean=false):String? {
         if(mode !in 1..4)return "Modo inválido"
-        if(config.getInt("enabled_modes") and (1 shl (mode-1))==0)return "Este modo está deshabilitado"
+        // enabled_modes is a retired compatibility bitmask, not a TV mode entitlement.
+        // Availability is decided by the playlist, layout, and real Android permissions.
         val name=DeviceDebug.mode(mode)
         if(model==null)return "$name: sincroniza el catálogo y asigna una playlist compatible antes de activar"
         val id=playlist(config,mode)

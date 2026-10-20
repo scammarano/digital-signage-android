@@ -37,6 +37,34 @@ class SportsInstrumentation:Instrumentation(){
         }
     }
 
+
+    private fun exerciseLegacyModesAndColdStart(){
+        val settings=SettingsStore(targetContext)
+        val saved=settings.publicSnapshot()
+        val prevManual=settings.manualMode
+        try {
+            // A device upgraded from old signage-only mode_mask must still allow
+            // Overlay when it has a playlist. No more "Modo deshabilitado".
+            settings.applySnapshot(settings.publicSnapshot()
+                .put("enabled_modes",1).put("primary_mode",1)
+                .put("overlay_layout","fullscreen").put("overlay_playlist_fullscreen",42))
+            val empty=JSONObject().put("schema_version",3)
+                .put("orientation","landscape").put("playlist_catalog",JSONObject())
+            val model=ManifestModel(empty)
+            val msg=ModeReadiness.error(settings.publicSnapshot(),model,2)
+            check(msg==null || !msg.contains("deshabilitado",true)){"Legacy mask blocks Overlay"}
+            settings.manualMode=2
+            check(StartupPolicy.mode(settings,null)==2){"Cold boot ignored local Overlay"}
+            check(StartupPolicy.mode(settings,model)==2){"Cached manifest ignored local Overlay"}
+            settings.manualMode=4
+            check(StartupPolicy.mode(settings,model)==4){"Legacy mask blocked Sports"}
+            println("BOOT_COLD_CACHE_PASS LEGACY_OVERLAY_MASK_IGNORED_PASS")
+        } finally {
+            check(settings.applySnapshot(saved))
+            settings.manualMode=prevManual
+        }
+    }
+
     private fun exerciseBootLocalVeto(){
         val settings=SettingsStore(targetContext)
         val snapshot=settings.publicSnapshot()
@@ -74,6 +102,7 @@ class SportsInstrumentation:Instrumentation(){
         exercisePin()
         exerciseSettingsRemote()
         exerciseBootLocalVeto()
+        exerciseLegacyModesAndColdStart()
         exerciseLanTabs()
         exerciseOverlay()
         exerciseInstaller()

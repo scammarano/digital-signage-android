@@ -61,23 +61,26 @@ class DeviceConfigSync(
             .put("settings",reportSettings())
             .put("sha256",reply.optString("sha256")))
         if(changed)audit("reported",applied,"confirmación aceptada por portal")
-        // Applying a PIN is a separate privileged workflow: no PIN value in logs,
-        // snapshots, backups, telemetry, or config schema.
-        try {
-            val command=api.pendingPinCommand()
-            if(command.optBoolean("pending",false)){
-                val rev=command.getLong("revision")
-                val pin=command.getString("pin")
-                settings.setPin(pin)
-                check(api.acknowledgePinCommand(rev).optBoolean("applied",false)){"El portal no confirmó la revisión del PIN"}
-                audit("pin_applied",rev,"PIN administrativo aplicado desde portal")
-            }
-        }catch(e:PortalHttpException){
-            // Older portals do not have this endpoint. Keep old APK/portal pairing
-            // interoperable while the operator installs the signed web upgrade.
-            if(e.status!=404)throw e
-        }
+        syncAdminPin()
         return applied==wanted
     }
-}
+    /** This can run immediately after pairing and BEFORE first Settings login.
+      * It intentionally does not depend on desiredConfig() or a manifest. */
+    fun syncAdminPin():Boolean {
+        try {
+            val command=api.pendingPinCommand()
+            if(!command.optBoolean("pending",false))return false
+            val rev=command.getLong("revision")
+            val pin=command.getString("pin")
+            settings.setPin(pin)
+            check(api.acknowledgePinCommand(rev).optBoolean("applied",false)){"El portal no confirmó la revisión del PIN"}
+            audit("pin_applied",rev,"PIN administrativo aplicado desde portal")
+            return true
+        }catch(e:PortalHttpException){
+            // Backward compatibility with web <=0.4.30.
+            if(e.status==404)return false
+            throw e
+        }
+    }
 
+}

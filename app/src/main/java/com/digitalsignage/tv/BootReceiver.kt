@@ -31,8 +31,12 @@ class BootReceiver:BroadcastReceiver(){
                 }
                 val model=CacheManager(app,settings).active()?.let{ManifestModel(it)}
                 val mode=StartupPolicy.mode(settings,model)
-                val error=ModeReadiness.error(settings.publicSnapshot(),model,mode)
-                if(error!=null){notify(app,"Inicio pendiente",error);logs.record("warn","boot_blocked",error);return@Thread}
+                // Do not require a pre-existing manifest at boot: after clean
+                // pairing/cache reset, the player or Overlay service must fetch it.
+                if(model==null)logs.record("info","boot_cache_miss","Arranque sin caché: sincronización pendiente","mode=$mode")
+                else ModeReadiness.error(settings.publicSnapshot(),model,mode)?.let{
+                    logs.record("warn","boot_readiness_pending",it,"mode=$mode;recovery=sync_on_start")
+                }
                 if(StartupPolicy.background(mode)){
                     if(!AndroidCompat.canOverlay(app)){
                         notify(app,"Overlay bloqueado","Abre Ajustes para autorizar la superposición")

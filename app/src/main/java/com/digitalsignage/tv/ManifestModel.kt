@@ -11,7 +11,7 @@ class ManifestModel(val json:JSONObject){
     fun localNow():LocalDateTime = LocalDateTime.now(timezone)
     fun activeMode(settings:SettingsStore):Int {
         val override=settings.manualMode
-        if(override in 1..4 && (settings.enabledModes and (1 shl (override-1)))!=0)return override
+        if(override in 1..4)return override
         val rows=json.optJSONArray("mode_blocks")?:JSONArray()
         val blocks=ArrayList<TimeRules.ModeBlock>()
         for(i in 0 until rows.length()){
@@ -23,7 +23,9 @@ class ManifestModel(val json:JSONObject){
         }
         val legacyMask=json.optJSONObject("device_options")?.optInt("modes_enabled",15)?:15
         val remoteMask=if(json.optInt("schema_version",2)<3 && legacyMask and 4!=0)legacyMask or 8 else legacyMask
-        return TimeRules.mode(blocks,settings.primaryMode,settings.enabledModes and remoteMask,localNow())
+        // Do not silently change a user's local mode because historic checkboxes
+        // disabled a mode. Real programming/playlist compatibility is checked later.
+        return TimeRules.mode(blocks,settings.primaryMode,15,localNow())
     }
     fun entries():JSONArray {
         val rows=json.optJSONArray("schedules")?:JSONArray();val matches=ArrayList<JSONObject>();val now=localNow()
