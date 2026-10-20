@@ -88,8 +88,8 @@ class SettingsStore(private val context: Context) {
         get() = p.getBoolean("offline_playback",p.getBoolean("offline",true))
         set(v) = p.edit().putBoolean("offline_playback",v).apply()
     var enabledModes: Int
-        get() = p.getInt("enabled_modes",15) and 15
-        set(v) = p.edit().putInt("enabled_modes",v and 15).apply()
+        get() = (p.getInt("enabled_modes",15) and 15) or 3
+        set(v) = p.edit().putInt("enabled_modes",(v and 15) or 3).apply()
     var primaryMode:Int
         get()=p.getInt("primary_mode",1).coerceIn(1,4)
         set(v){require(v in 1..4);p.edit().putInt("primary_mode",v).apply()}
@@ -178,6 +178,7 @@ class SettingsStore(private val context: Context) {
                 "debug_hud_enabled"->debugHudEnabled
                 "offline_playback"->offlinePlayback
                 "update_channel"->updateChannel
+                "enabled_modes"->enabledModes
                 else->when(d){is Boolean->p.getBoolean(k,d);is Int->p.getInt(k,d);else->p.getString(k,d.toString())?:d.toString()}
             };put(k,value)
         }
@@ -248,7 +249,8 @@ class SettingsStore(private val context: Context) {
                 else->require(v is Int && v in f.getInt("min")..f.getInt("max")){"Fuera de rango: $k"}
             }
         }
-        require(full.getInt("enabled_modes") and (1 shl (full.getInt("primary_mode")-1))!=0){"El modo principal debe estar habilitado"}
+        full.put("enabled_modes",full.getInt("enabled_modes") or 3)
+        require(full.getInt("enabled_modes") and (1 shl (full.getInt("primary_mode")-1))!=0){"El módulo principal seleccionado no está habilitado"}
         return full
     }
     @Synchronized fun applySnapshot(snapshot:org.json.JSONObject,newRevision:Long?=null):Boolean {
