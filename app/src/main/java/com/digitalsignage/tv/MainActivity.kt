@@ -290,7 +290,19 @@ class MainActivity : Activity() {
                 try {
                     logs.record("info","pairing","Intentando vinculación")
                     val reply=SignageApi(settings.portalUrl,null).pair(entered)
-                    token.save(reply.getString("token"))
+                    val pairedToken=reply.getString("token")
+                    token.save(pairedToken)
+                    try {
+                        settings.onPairedDevice(reply.getInt("device_id"))
+                        // The PIN has an independent endpoint: fetch it immediately
+                        // after pairing, without waiting for the first config poll.
+                        DevicePinSync(settings,SignageApi(settings.portalUrl,pairedToken)){event,revision,detail->
+                            logs.record("info",event,detail,"pin_revision=$revision")
+                        }.poll()
+                    }catch(e:Exception){
+                        logs.record("warn","pin_after_pair_retry","PIN pendiente de sincronizar",
+                            e.javaClass.simpleName)
+                    }
                     logs.record("info","pairing","Vinculación guardada","device_id=${reply.optInt("device_id")}")
                     ui.post { line.text="Vinculado. Sincronizando...";showMode();sync();checkAppUpdates() }
                 }catch(e:Exception){logs.record("error","pairing",e.javaClass.simpleName,e.message?:"")
