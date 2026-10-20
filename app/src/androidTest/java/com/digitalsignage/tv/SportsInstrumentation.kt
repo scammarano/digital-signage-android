@@ -57,6 +57,22 @@ class SportsInstrumentation:Instrumentation(){
         }
     }
 
+    private fun exerciseP6CoreModes(){
+        val settings=SettingsStore(targetContext)
+        val legacy=settings.publicSnapshot().put("enabled_modes",0).put("primary_mode",2)
+        val normalized=settings.validateSettings(legacy)
+        check(normalized.getInt("enabled_modes")==3){"P6 base-mode migration lost Overlay"}
+        check(ModeReadiness.error(normalized,null,2)?.contains("sincroniza el catálogo")==true){
+            "Overlay must be waiting for content, not blocked by the old mask"
+        }
+        check(ModeReadiness.error(normalized,null,4)?.contains("Marcador deportivo no está habilitado")==true){
+            "Unlicensed Sports must show an explicit module error"
+        }
+        check(ModeReadiness.error(normalized,null,3)?.contains("Turnos no está habilitado")==true)
+        check(settings.publicSnapshot().has("pin")==false){"PIN value leaked in public settings"}
+        verificationDetails.append("P6_CORE_MODES_PASS legacy_mask_zero overlay_base sports_license_specific\\n")
+    }
+
     private fun exercise(){
         val formats=JSONObject().put("revision",4).put("side_width_pct",35).put("bottom_height_pct",30)
         check(MediaFormats.percent(formats,"side")==35 && MediaFormats.percent(formats,"bottom")==30)
@@ -74,6 +90,7 @@ class SportsInstrumentation:Instrumentation(){
         exercisePin()
         exerciseSettingsRemote()
         exerciseBootLocalVeto()
+        exerciseP6CoreModes()
         exerciseLanTabs()
         exerciseOverlay()
         exerciseInstaller()
