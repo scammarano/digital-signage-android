@@ -107,7 +107,8 @@ class OverlayService:Service(){
         if(intent?.action==ACTION_PREVIEW){
             hide()
             nextAdAt=System.currentTimeMillis()
-            previewUntil=nextAdAt+settings.overlayDurationSec*1000L+2000L
+            // Watchdog before frame attachment; duration begins at actual display.
+            previewUntil=nextAdAt+30000L
         }
         // Start only after the start intent has established preview policy. A ticker
         // queued in onCreate can otherwise stop a new preview in a non-Overlay mode.
@@ -195,6 +196,7 @@ class OverlayService:Service(){
             frame.post{
                 if(current!==frame || frame.windowToken==null)return@post
                 lastShownAt=System.currentTimeMillis();hideAt=lastShownAt+duration
+                if(previewUntil>0L)previewUntil=lastShownAt+duration+2000L
                 val deck=MediaDeck(frame,cache,false,true);mediaDeck=deck;windowSlots=0L
                 fun advance(){
                     if(current!==frame)return

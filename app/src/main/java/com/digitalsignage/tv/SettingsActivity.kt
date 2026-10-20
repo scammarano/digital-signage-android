@@ -101,6 +101,13 @@ class SettingsActivity:Activity(){
         fun action(title:String,run:()->Unit){root.addView(ScreenStyles.button(this,title,action=run).apply{minHeight=(52*dm.density).toInt();textSize=20f})}
         if(selectedTab=="General"){
             val manual=config.manualMode in 1..4
+            val bootStatus=when {
+                config.localBootBlocked()->"BLOQUEADO DESDE ESTA TV: activa «Iniciar al arrancar Fire OS» para quitar el veto local."
+                !config.autoStart->"DESACTIVADO EN LA CONFIGURACIÓN: no iniciará tras reiniciar Fire OS."
+                config.diagnosticMode->"BLOQUEADO POR MODO DIAGNÓSTICO: vuelve al inicio normal."
+                else->"ACTIVADO: el equipo sincronizará contenido después de iniciar Fire OS."
+            }
+            root.addView(ScreenStyles.label(this,"Inicio automático · "+bootStatus,18f))
             root.addView(ScreenStyles.label(this,"Control del modo",23f))
             action(if(manual)"○ Automático · usar modo del portal" else "● Automático · portal activo"){
                 config.manualMode=0;DeviceLogs(this).record("info","mode_source","Control automático del portal");showSettings()
