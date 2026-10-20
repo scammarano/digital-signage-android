@@ -44,6 +44,12 @@ jobs:
           fi
       - name: Compile APK
         run: gradle --no-daemon --stacktrace assembleDebug
+      - name: Refuse permanent release builds without protected P5 signing inputs
+        run: |
+          if gradle --no-daemon :app:assembleRelease -PdsPermanentSigning=true >/tmp/signing-denial.log 2>&1; then
+            echo 'ERROR: permanent release built without P5 key'; exit 1
+          fi
+          grep -q 'Missing required protected P5 signing configuration' /tmp/signing-denial.log
       - name: Verify signed APK and Android 4.4 compatibility
         run: |
           set -euo pipefail
